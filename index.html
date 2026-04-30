@@ -1195,9 +1195,9 @@
     showSection('upload');
     document.getElementById('summaryCard').style.display = 'none';
     document.getElementById('uploadAlert').className = 'alert';
-    // Show repo name in banner
+    // Show repo name in banner (solo nombre, sin usuario)
     const bannerName = document.getElementById('repoBannerName');
-    if (bannerName) bannerName.textContent = selectedRepo.full_name;
+    if (bannerName) bannerName.textContent = selectedRepo.name || selectedRepo.full_name.split('/')[1];
   }
 
   function goToRepos() { stopPagesMonitor(); showSection('repo'); }
