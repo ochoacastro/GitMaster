@@ -119,6 +119,27 @@
   .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
   .btn-danger { background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid rgba(239,68,68,0.2); font-size: 11px; }
 
+  /* Token tab switcher */
+  .token-tab {
+    flex: 1; padding: 8px 10px; border-radius: 7px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.5px; cursor: pointer;
+    border: 1px solid var(--border); background: transparent; color: var(--muted);
+    transition: all 0.2s;
+  }
+  .token-tab.active {
+    background: rgba(0,255,136,0.08); border-color: var(--accent); color: var(--accent);
+  }
+  .token-tab:hover:not(.active) { border-color: var(--muted); color: var(--text); }
+
+  /* Token file drop zone */
+  .token-file-drop {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 28px 16px; text-align: center; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .token-file-drop:hover { border-color: var(--accent); background: rgba(0,255,136,0.04); }
+  .token-file-drop.dragging { border-color: var(--accent); background: rgba(0,255,136,0.07); }
+
   /* Token help */
   .token-help {
     background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.2);
@@ -509,10 +530,35 @@
         → selecciona <strong>repo</strong> (acceso completo) → genera el token.
       </div>
       <div id="loginAlert" class="alert"></div>
-      <div class="field">
-        <label>GitHub Token</label>
-        <input type="password" id="tokenInput" class="input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+
+      <!-- Tab switcher -->
+      <div style="display:flex;gap:6px;margin-bottom:14px">
+        <button id="tabManual" class="token-tab active" onclick="switchTokenTab('manual')">✎ Escribir token</button>
+        <button id="tabFile" class="token-tab" onclick="switchTokenTab('file')">📂 Subir archivo</button>
       </div>
+
+      <!-- Manual input -->
+      <div id="tokenManualPanel">
+        <div class="field">
+          <label>GitHub Token</label>
+          <input type="password" id="tokenInput" class="input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+        </div>
+        <button class="btn btn-ghost" onclick="downloadTokenFile()" style="width:100%;margin-bottom:12px;font-size:11px">
+          ⬇ Guardar token en archivo (.token)
+        </button>
+      </div>
+
+      <!-- File upload input -->
+      <div id="tokenFilePanel" style="display:none">
+        <div class="token-file-drop" id="tokenFileDrop" onclick="document.getElementById('tokenFileInput').click()">
+          <input type="file" id="tokenFileInput" accept=".token,.txt,.env" style="display:none" onchange="loadTokenFromFile(this.files[0])">
+          <div style="font-size:28px;margin-bottom:8px">🗂</div>
+          <div style="font-size:13px;color:var(--text)"><strong style="color:var(--accent)">Toca para seleccionar</strong> tu archivo de token</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px;letter-spacing:1px">.token · .txt · .env</div>
+        </div>
+        <div id="tokenFileStatus" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(0,255,136,0.07);border:1px solid rgba(0,255,136,0.2);color:var(--accent)"></div>
+      </div>
+
       <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">
         <span id="loginSpinner" class="spinner"></span>
         <span id="loginBtnText">Conectar con GitHub</span>
@@ -789,6 +835,70 @@
     renderRepoList(window._allRepos || []);
   }
 
+  // ─── Token file helpers ───────────────────────────────────────────────────
+  function switchTokenTab(tab) {
+    const isManual = tab === 'manual';
+    document.getElementById('tabManual').classList.toggle('active', isManual);
+    document.getElementById('tabFile').classList.toggle('active', !isManual);
+    document.getElementById('tokenManualPanel').style.display = isManual ? 'block' : 'none';
+    document.getElementById('tokenFilePanel').style.display = isManual ? 'none' : 'block';
+  }
+
+  function loadTokenFromFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const raw = e.target.result || '';
+      // Extract token: support KEY=value, plain token, or first non-empty line
+      let found = '';
+      for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        // KEY=value format
+        if (trimmed.includes('=')) {
+          const val = trimmed.split('=').slice(1).join('=').trim().replace(/^["']|["']$/g, '');
+          if (val.startsWith('ghp_') || val.startsWith('github_pat_') || val.length > 20) {
+            found = val; break;
+          }
+        } else if (trimmed.startsWith('ghp_') || trimmed.startsWith('github_pat_') || trimmed.length > 20) {
+          found = trimmed; break;
+        }
+      }
+      const statusEl = document.getElementById('tokenFileStatus');
+      if (found) {
+        // Put into the hidden tokenInput so doLogin() works unchanged
+        document.getElementById('tokenInput').value = found;
+        statusEl.style.display = 'block';
+        statusEl.style.background = 'rgba(0,255,136,0.07)';
+        statusEl.style.borderColor = 'rgba(0,255,136,0.2)';
+        statusEl.style.color = 'var(--accent)';
+        statusEl.textContent = `✓ Token leído desde "${file.name}" · ${found.substring(0,8)}${'•'.repeat(10)}`;
+      } else {
+        statusEl.style.display = 'block';
+        statusEl.style.background = 'rgba(239,68,68,0.07)';
+        statusEl.style.borderColor = 'rgba(239,68,68,0.2)';
+        statusEl.style.color = 'var(--danger)';
+        statusEl.textContent = `✗ No se encontró un token válido en "${file.name}". El archivo debe contener el token (ghp_...) en texto plano.`;
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function downloadTokenFile() {
+    const t = document.getElementById('tokenInput').value.trim();
+    if (!t) {
+      showAlert('loginAlert', 'error', 'Primero ingresa tu token para guardarlo en el archivo.');
+      return;
+    }
+    const content = `# GitHub Personal Access Token\n# Generado por GitDeploy\n# NO compartas este archivo\nGITHUB_TOKEN=${t}\n`;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'github.token';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   // ─── Login ───────────────────────────────────────────────────────────────
   async function doLogin() {
     const t = document.getElementById('tokenInput').value.trim();
@@ -1003,7 +1113,7 @@
     if (folderInput) {
       folderInput.addEventListener('input', updatePathPreview);
     }
-    // Drag and drop
+    // Drag and drop for file upload
     const dz = document.getElementById('dropzone');
     if (dz) {
       dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragging'); });
@@ -1011,6 +1121,16 @@
       dz.addEventListener('drop', e => {
         e.preventDefault(); dz.classList.remove('dragging');
         handleFiles(e.dataTransfer.files);
+      });
+    }
+    // Drag and drop for token file
+    const tfd = document.getElementById('tokenFileDrop');
+    if (tfd) {
+      tfd.addEventListener('dragover', e => { e.preventDefault(); tfd.classList.add('dragging'); });
+      tfd.addEventListener('dragleave', () => tfd.classList.remove('dragging'));
+      tfd.addEventListener('drop', e => {
+        e.preventDefault(); tfd.classList.remove('dragging');
+        if (e.dataTransfer.files[0]) loadTokenFromFile(e.dataTransfer.files[0]);
       });
     }
   });
