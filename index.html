@@ -376,6 +376,70 @@
   /* Pages badge on repo item */
   .repo-badge.pages { background: rgba(0,255,136,0.1); color: var(--accent); border-color: rgba(0,255,136,0.2); }
 
+  /* Favorites star */
+  .repo-fav-btn {
+    background: none; border: none; cursor: pointer; font-size: 16px;
+    color: var(--muted); padding: 2px 4px; flex-shrink: 0;
+    transition: color 0.2s, transform 0.15s; line-height: 1;
+  }
+  .repo-fav-btn:hover { transform: scale(1.2); }
+  .repo-fav-btn.active { color: #f59e0b; }
+
+  /* Repo action buttons row */
+  .repo-actions {
+    display: flex; gap: 5px; flex-shrink: 0; align-items: center;
+  }
+  .btn-repo-action {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 5px; font-size: 10px; padding: 3px 8px; cursor: pointer;
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px;
+    transition: all 0.15s;
+  }
+  .btn-repo-action:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-repo-action.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* Favorites section header */
+  .fav-section-label {
+    font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+    color: #f59e0b; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .fav-section-label::after { content: ''; flex: 1; height: 1px; background: rgba(245,158,11,0.2); }
+  .all-section-label {
+    font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--muted); margin: 10px 0 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .all-section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* Rename repo modal */
+  .rename-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    z-index: 300; display: flex; align-items: flex-end; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.25s;
+  }
+  .rename-modal-overlay.visible { opacity: 1; pointer-events: all; }
+  .rename-modal {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px 16px 0 0; padding: 24px 20px 36px;
+    width: 100%; max-width: 680px;
+    transform: translateY(100%); transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+  }
+  .rename-modal-overlay.visible .rename-modal { transform: translateY(0); }
+
+  /* Delete repo modal */
+  .delete-repo-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+    z-index: 300; display: flex; align-items: flex-end; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.25s;
+  }
+  .delete-repo-modal-overlay.visible { opacity: 1; pointer-events: all; }
+  .delete-repo-modal {
+    background: var(--card); border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 16px 16px 0 0; padding: 24px 20px 36px;
+    width: 100%; max-width: 680px;
+    transform: translateY(100%); transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+  }
+  .delete-repo-modal-overlay.visible .delete-repo-modal { transform: translateY(0); }
+
   /* Pages panel */
   .pages-panel {
     position: fixed; inset: 0; background: var(--bg);
@@ -645,6 +709,51 @@
   </div>
 </div>
 
+<!-- ── Modal: Renombrar repositorio ── -->
+<div class="rename-modal-overlay" id="renameRepoModal">
+  <div class="rename-modal">
+    <div class="modal-title">✎ Renombrar repositorio</div>
+    <div class="modal-subtitle" id="renameRepoSubtitle">Introduce el nuevo nombre para el repositorio.</div>
+    <div class="field" style="margin-top:14px">
+      <label>Nuevo nombre</label>
+      <input type="text" id="renameRepoInput" class="input" placeholder="nuevo-nombre-repo"
+        onkeydown="if(event.key==='Enter') confirmRenameRepo()">
+    </div>
+    <div id="renameRepoAlert" class="alert" style="margin-top:8px"></div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-ghost" onclick="closeRenameRepoModal()">Cancelar</button>
+      <button class="btn btn-primary" id="confirmRenameBtn" onclick="confirmRenameRepo()">
+        <span id="renameRepoSpinner" class="spinner"></span>
+        <span id="renameRepoBtnText">Renombrar</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Eliminar repositorio ── -->
+<div class="delete-repo-modal-overlay" id="deleteRepoModal">
+  <div class="delete-repo-modal">
+    <div class="modal-title" style="color:var(--danger)">⚠ Eliminar repositorio</div>
+    <div class="modal-subtitle">Esta acción es <strong style="color:#fca5a5">irreversible</strong>. Se eliminarán todos los archivos, issues, Pages y el historial de commits.</div>
+    <div class="modal-file-info" style="border-color:rgba(239,68,68,0.2);margin-top:12px">
+      <div class="mfi-name" id="deleteRepoName" style="color:var(--danger)"></div>
+      <div class="mfi-meta">Para confirmar, escribe el nombre exacto del repositorio:</div>
+    </div>
+    <div class="field" style="margin-top:12px">
+      <input type="text" id="deleteRepoConfirmInput" class="input" placeholder="nombre-del-repositorio"
+        oninput="checkDeleteRepoConfirm()" onkeydown="if(event.key==='Enter') confirmDeleteRepo()">
+    </div>
+    <div id="deleteRepoAlert" class="alert" style="margin-top:8px"></div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-ghost" onclick="closeDeleteRepoModal()">Cancelar</button>
+      <button class="btn btn-danger" id="confirmDeleteRepoBtn" onclick="confirmDeleteRepo()" disabled style="flex:1;opacity:0.4">
+        <span id="deleteRepoSpinner" class="spinner"></span>
+        <span id="deleteRepoBtnText">Eliminar definitivamente</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Panel: historial de versiones ── -->
 <div class="history-panel" id="historyPanel">
   <div class="history-header">
@@ -663,6 +772,22 @@
   let user = null;
   let selectedRepo = null;
   let files = []; // {file, name, status}
+  let favorites = JSON.parse(localStorage.getItem('gitdeploy_favorites') || '[]');
+  let pendingRenameRepo = null;
+  let pendingDeleteRepo = null;
+
+  function saveFavorites() {
+    localStorage.setItem('gitdeploy_favorites', JSON.stringify(favorites));
+  }
+
+  function toggleFavorite(fullName, e) {
+    e.stopPropagation();
+    const idx = favorites.indexOf(fullName);
+    if (idx === -1) favorites.push(fullName);
+    else favorites.splice(idx, 1);
+    saveFavorites();
+    renderRepoList(window._allRepos || []);
+  }
 
   // ─── Login ───────────────────────────────────────────────────────────────
   async function doLogin() {
@@ -698,7 +823,6 @@
     const list = document.getElementById('repoList');
     list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Cargando repositorios...</div>';
     try {
-      // Load up to 100 repos
       let allRepos = [];
       let page = 1;
       while(true) {
@@ -708,32 +832,70 @@
         if (batch.length < 100) break;
         page++;
       }
-      list.innerHTML = '';
-      if (allRepos.length === 0) {
-        list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">No tienes repositorios aún.</div>';
-        return;
-      }
-      allRepos.forEach(repo => {
-        const el = document.createElement('div');
-        el.className = 'repo-item';
-        el.dataset.repo = JSON.stringify({full_name: repo.full_name, name: repo.name, private: repo.private, default_branch: repo.default_branch || 'main'});
-        el.innerHTML = `
-          <div class="repo-icon">⬡</div>
-          <div style="flex:1;min-width:0">
-            <div class="repo-name">${repo.name}</div>
-            <div class="repo-meta">
-              <span>${repo.language || 'N/A'}</span>
-              <span>⭐ ${repo.stargazers_count}</span>
-            </div>
-          </div>
-          <span class="repo-badge ${repo.private ? 'private' : ''}">${repo.private ? 'PRIVATE' : 'PUBLIC'}</span>
-        `;
-        el.onclick = () => selectRepo(el, JSON.parse(el.dataset.repo));
-        list.appendChild(el);
-      });
+      window._allRepos = allRepos;
+      renderRepoList(allRepos);
     } catch(e) {
       list.innerHTML = `<div style="color:var(--danger);font-size:12px">${e.message}</div>`;
     }
+  }
+
+  function renderRepoList(allRepos) {
+    const list = document.getElementById('repoList');
+    list.innerHTML = '';
+    if (allRepos.length === 0) {
+      list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">No tienes repositorios aún.</div>';
+      return;
+    }
+
+    const favRepos = allRepos.filter(r => favorites.includes(r.full_name));
+    const otherRepos = allRepos.filter(r => !favorites.includes(r.full_name));
+
+    function buildRepoEl(repo) {
+      const repoData = {full_name: repo.full_name, name: repo.name, private: repo.private, default_branch: repo.default_branch || 'main'};
+      const isFav = favorites.includes(repo.full_name);
+      const isSelected = selectedRepo && selectedRepo.full_name === repo.full_name;
+      const el = document.createElement('div');
+      el.className = 'repo-item' + (isSelected ? ' selected' : '');
+      el.dataset.repo = JSON.stringify(repoData);
+      el.innerHTML = `
+        <button class="repo-fav-btn ${isFav ? 'active' : ''}" title="${isFav ? 'Quitar de favoritos' : 'Marcar como favorito'}"
+          onclick="toggleFavorite('${repo.full_name}', event)">★</button>
+        <div class="repo-icon">⬡</div>
+        <div style="flex:1;min-width:0">
+          <div class="repo-name">${repo.name}</div>
+          <div class="repo-meta">
+            <span>${repo.language || 'N/A'}</span>
+            <span>⭐ ${repo.stargazers_count}</span>
+          </div>
+        </div>
+        <div class="repo-actions" onclick="event.stopPropagation()">
+          <span class="repo-badge ${repo.private ? 'private' : ''}">${repo.private ? 'PRIVATE' : 'PUBLIC'}</span>
+          <button class="btn-repo-action" title="Renombrar repositorio" onclick="openRenameRepoModal('${repo.full_name}','${repo.name.replace(/'/g,"\\'")}')">✎</button>
+          <button class="btn-repo-action danger" title="Eliminar repositorio" onclick="openDeleteRepoModal('${repo.full_name}','${repo.name.replace(/'/g,"\\'")}')">🗑</button>
+        </div>
+      `;
+      el.onclick = (e) => {
+        if (e.target.closest('.repo-actions') || e.target.classList.contains('repo-fav-btn')) return;
+        selectRepo(el, repoData);
+      };
+      return el;
+    }
+
+    if (favRepos.length > 0) {
+      const favLabel = document.createElement('div');
+      favLabel.className = 'fav-section-label';
+      favLabel.innerHTML = '★ Favoritos';
+      list.appendChild(favLabel);
+      favRepos.forEach(r => list.appendChild(buildRepoEl(r)));
+
+      if (otherRepos.length > 0) {
+        const allLabel = document.createElement('div');
+        allLabel.className = 'all-section-label';
+        allLabel.innerHTML = '// Todos los repositorios';
+        list.appendChild(allLabel);
+      }
+    }
+    otherRepos.forEach(r => list.appendChild(buildRepoEl(r)));
   }
 
   function selectRepo(el, repo) {
@@ -1411,6 +1573,133 @@
 
   function closePagesPanel() {
     document.getElementById('pagesPanel').classList.remove('visible');
+  }
+
+  // ─── Rename Repo ──────────────────────────────────────────────────────────
+  function openRenameRepoModal(fullName, currentName) {
+    pendingRenameRepo = { fullName, currentName };
+    document.getElementById('renameRepoSubtitle').textContent = `Renombrando: ${fullName}`;
+    document.getElementById('renameRepoInput').value = currentName;
+    document.getElementById('renameRepoAlert').className = 'alert';
+    document.getElementById('renameRepoBtnText').textContent = 'Renombrar';
+    document.getElementById('renameRepoModal').classList.add('visible');
+    setTimeout(() => document.getElementById('renameRepoInput').focus(), 300);
+  }
+
+  function closeRenameRepoModal() {
+    document.getElementById('renameRepoModal').classList.remove('visible');
+    pendingRenameRepo = null;
+  }
+
+  async function confirmRenameRepo() {
+    if (!pendingRenameRepo) return;
+    const newName = document.getElementById('renameRepoInput').value.trim();
+    if (!newName) return;
+    if (newName === pendingRenameRepo.currentName) return closeRenameRepoModal();
+
+    const alertEl = document.getElementById('renameRepoAlert');
+    document.getElementById('renameRepoSpinner').classList.add('visible');
+    document.getElementById('renameRepoBtnText').textContent = 'Renombrando...';
+    document.getElementById('confirmRenameBtn').disabled = true;
+
+    try {
+      const [owner] = pendingRenameRepo.fullName.split('/');
+      const r = await fetch(`https://api.github.com/repos/${pendingRenameRepo.fullName}`, {
+        method: 'PATCH',
+        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName })
+      });
+      const data = await r.json();
+      if (r.ok && data.full_name) {
+        // Update favorites if needed
+        const favIdx = favorites.indexOf(pendingRenameRepo.fullName);
+        if (favIdx !== -1) { favorites[favIdx] = data.full_name; saveFavorites(); }
+        // Update selectedRepo if it was this one
+        if (selectedRepo && selectedRepo.full_name === pendingRenameRepo.fullName) {
+          selectedRepo = { ...selectedRepo, full_name: data.full_name, name: data.name };
+          document.getElementById('selectedRepoBanner').textContent =
+            `✓ Seleccionado: ${data.full_name} · rama: ${data.default_branch || 'main'}`;
+        }
+        closeRenameRepoModal();
+        await loadRepos();
+      } else {
+        throw new Error(data.message || 'No se pudo renombrar');
+      }
+    } catch(e) {
+      alertEl.className = 'alert error visible';
+      alertEl.textContent = '✗ ' + e.message;
+    }
+
+    document.getElementById('renameRepoSpinner').classList.remove('visible');
+    document.getElementById('renameRepoBtnText').textContent = 'Renombrar';
+    document.getElementById('confirmRenameBtn').disabled = false;
+  }
+
+  // ─── Delete Repo ──────────────────────────────────────────────────────────
+  function openDeleteRepoModal(fullName, repoName) {
+    pendingDeleteRepo = { fullName, repoName };
+    document.getElementById('deleteRepoName').textContent = fullName;
+    document.getElementById('deleteRepoConfirmInput').value = '';
+    document.getElementById('deleteRepoAlert').className = 'alert';
+    document.getElementById('confirmDeleteRepoBtn').disabled = true;
+    document.getElementById('confirmDeleteRepoBtn').style.opacity = '0.4';
+    document.getElementById('deleteRepoBtnText').textContent = 'Eliminar definitivamente';
+    document.getElementById('deleteRepoModal').classList.add('visible');
+    setTimeout(() => document.getElementById('deleteRepoConfirmInput').focus(), 300);
+  }
+
+  function closeDeleteRepoModal() {
+    document.getElementById('deleteRepoModal').classList.remove('visible');
+    pendingDeleteRepo = null;
+  }
+
+  function checkDeleteRepoConfirm() {
+    const val = document.getElementById('deleteRepoConfirmInput').value.trim();
+    const btn = document.getElementById('confirmDeleteRepoBtn');
+    const match = pendingDeleteRepo && val === pendingDeleteRepo.repoName;
+    btn.disabled = !match;
+    btn.style.opacity = match ? '1' : '0.4';
+  }
+
+  async function confirmDeleteRepo() {
+    if (!pendingDeleteRepo) return;
+    const btn = document.getElementById('confirmDeleteRepoBtn');
+    if (btn.disabled) return;
+    const alertEl = document.getElementById('deleteRepoAlert');
+
+    document.getElementById('deleteRepoSpinner').classList.add('visible');
+    document.getElementById('deleteRepoBtnText').textContent = 'Eliminando...';
+    btn.disabled = true;
+
+    try {
+      const r = await fetch(`https://api.github.com/repos/${pendingDeleteRepo.fullName}`, {
+        method: 'DELETE',
+        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
+      });
+      if (r.status === 204) {
+        // Remove from favorites
+        favorites = favorites.filter(f => f !== pendingDeleteRepo.fullName);
+        saveFavorites();
+        // Deselect if was selected
+        if (selectedRepo && selectedRepo.full_name === pendingDeleteRepo.fullName) {
+          selectedRepo = null;
+          document.getElementById('selectedRepoInfo').style.display = 'none';
+        }
+        window._allRepos = (window._allRepos || []).filter(r => r.full_name !== pendingDeleteRepo.fullName);
+        closeDeleteRepoModal();
+        renderRepoList(window._allRepos);
+        showAlert('repoAlert', 'success', `✓ Repositorio "${pendingDeleteRepo.repoName}" eliminado.`);
+      } else {
+        const d = await r.json();
+        throw new Error(d.message || 'No se pudo eliminar el repositorio');
+      }
+    } catch(e) {
+      alertEl.className = 'alert error visible';
+      alertEl.textContent = '✗ ' + e.message;
+      document.getElementById('deleteRepoSpinner').classList.remove('visible');
+      document.getElementById('deleteRepoBtnText').textContent = 'Eliminar definitivamente';
+      btn.disabled = false;
+    }
   }
 
   // ─── GitHub API helpers ───────────────────────────────────────────────────
