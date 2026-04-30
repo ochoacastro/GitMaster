@@ -779,22 +779,17 @@
 <!-- ── Modal: Eliminar repositorio ── -->
 <div class="delete-repo-modal-overlay" id="deleteRepoModal">
   <div class="delete-repo-modal">
-    <div class="modal-title" style="color:var(--danger)">⚠ Eliminar repositorio</div>
-    <div class="modal-subtitle">Esta acción es <strong style="color:#fca5a5">irreversible</strong>. Se eliminarán todos los archivos, issues, Pages y el historial de commits.</div>
+    <div class="modal-title" style="color:var(--danger)">🗑 Eliminar repositorio</div>
+    <div class="modal-subtitle">Esta acción es <strong style="color:#fca5a5">irreversible</strong>. Se eliminarán todos los archivos, historial y configuración.</div>
     <div class="modal-file-info" style="border-color:rgba(239,68,68,0.2);margin-top:12px">
       <div class="mfi-name" id="deleteRepoName" style="color:var(--danger)"></div>
-      <div class="mfi-meta">Para confirmar, escribe el nombre exacto del repositorio:</div>
-    </div>
-    <div class="field" style="margin-top:12px">
-      <input type="text" id="deleteRepoConfirmInput" class="input" placeholder="nombre-del-repositorio"
-        oninput="checkDeleteRepoConfirm()" onkeydown="if(event.key==='Enter') confirmDeleteRepo()">
     </div>
     <div id="deleteRepoAlert" class="alert" style="margin-top:8px"></div>
-    <div class="modal-actions" style="margin-top:14px">
+    <div class="modal-actions" style="margin-top:16px">
       <button class="btn btn-ghost" onclick="closeDeleteRepoModal()">Cancelar</button>
-      <button class="btn btn-danger" id="confirmDeleteRepoBtn" onclick="confirmDeleteRepo()" disabled style="flex:1;opacity:0.4">
+      <button class="btn btn-danger" id="confirmDeleteRepoBtn" onclick="confirmDeleteRepo()" style="flex:1">
         <span id="deleteRepoSpinner" class="spinner"></span>
-        <span id="deleteRepoBtnText">Eliminar definitivamente</span>
+        <span id="deleteRepoBtnText">Eliminar</span>
       </button>
     </div>
   </div>
@@ -1759,26 +1754,15 @@
   function openDeleteRepoModal(fullName, repoName) {
     pendingDeleteRepo = { fullName, repoName };
     document.getElementById('deleteRepoName').textContent = fullName;
-    document.getElementById('deleteRepoConfirmInput').value = '';
     document.getElementById('deleteRepoAlert').className = 'alert';
-    document.getElementById('confirmDeleteRepoBtn').disabled = true;
-    document.getElementById('confirmDeleteRepoBtn').style.opacity = '0.4';
-    document.getElementById('deleteRepoBtnText').textContent = 'Eliminar definitivamente';
+    document.getElementById('confirmDeleteRepoBtn').disabled = false;
+    document.getElementById('deleteRepoBtnText').textContent = 'Eliminar';
     document.getElementById('deleteRepoModal').classList.add('visible');
-    setTimeout(() => document.getElementById('deleteRepoConfirmInput').focus(), 300);
   }
 
   function closeDeleteRepoModal() {
     document.getElementById('deleteRepoModal').classList.remove('visible');
     pendingDeleteRepo = null;
-  }
-
-  function checkDeleteRepoConfirm() {
-    const val = document.getElementById('deleteRepoConfirmInput').value.trim();
-    const btn = document.getElementById('confirmDeleteRepoBtn');
-    const match = pendingDeleteRepo && val === pendingDeleteRepo.repoName;
-    btn.disabled = !match;
-    btn.style.opacity = match ? '1' : '0.4';
   }
 
   async function confirmDeleteRepo() {
