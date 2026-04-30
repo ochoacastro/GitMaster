@@ -629,6 +629,9 @@
       <div class="card-label">// Paso 02 — Seleccionar Repositorio</div>
       <div id="repoAlert" class="alert"></div>
 
+      <div style="margin-bottom:10px;position:relative">
+        <input type="text" id="repoSearch" class="input" placeholder="🔍 Buscar repositorio..." oninput="filterRepos(this.value)">
+      </div>
       <div id="repoList" class="repo-list"></div>
 
       <div style="margin-top:12px">
@@ -693,6 +696,22 @@
 
   <!-- SECTION 3: Upload -->
   <div id="uploadSection" class="section">
+
+    <!-- Repo name banner -->
+    <div id="repoBanner" style="
+      display:flex; align-items:center; gap:10px;
+      background: rgba(0,255,136,0.06);
+      border: 1px solid rgba(0,255,136,0.25);
+      border-radius: 10px; padding: 10px 14px;
+      margin-bottom: 14px;
+    ">
+      <span style="font-size:18px; flex-shrink:0">📁</span>
+      <div style="flex:1; min-width:0">
+        <div style="font-size:9px; letter-spacing:3px; text-transform:uppercase; color:var(--muted); margin-bottom:2px">Repositorio activo</div>
+        <div id="repoBannerName" style="font-family:'Syne',sans-serif; font-size:15px; font-weight:800; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+      </div>
+    </div>
+
     <div class="card active">
       <div class="card-label">// Paso 03 — Subir Archivos</div>
 
@@ -708,10 +727,15 @@
       </div>
 
       <div class="dropzone" id="dropzone">
-        <input type="file" id="fileInput" multiple accept=".html,.htm,.css,.js,.txt,.json,.md,.xml,.svg" onchange="handleFiles(this.files)">
+        <input type="file" id="fileInput" multiple onchange="handleFiles(this.files)">
+        <input type="file" id="folderInput" webkitdirectory multiple style="display:none" onchange="handleFolderFiles(this.files)">
         <div class="drop-icon">📂</div>
-        <div class="drop-text"><strong>Toca para seleccionar</strong> o arrastra archivos</div>
-        <div class="drop-hint">HTML · CSS · JS · MD · SVG · TXT · JSON</div>
+        <div class="drop-text"><strong>Toca para seleccionar</strong> o arrastra archivos / carpetas</div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost" style="font-size:10px;padding:5px 12px" onclick="event.stopPropagation();document.getElementById('fileInput').click()">📄 Archivos</button>
+          <button class="btn btn-ghost" style="font-size:10px;padding:5px 12px" onclick="event.stopPropagation();document.getElementById('folderInput').click()">📁 Carpeta</button>
+        </div>
+        <div class="drop-hint" style="margin-top:6px">HTML · CSS · JS · MD · SVG · TXT · JSON · y más</div>
       </div>
 
       <div id="fileQueue" class="file-queue"></div>
@@ -767,6 +791,7 @@
 
     <button class="btn btn-ghost" onclick="goToRepos()" style="width:100%;margin-top:8px">← Cambiar repositorio</button>
     <button class="btn btn-ghost" onclick="openExplorer()" style="width:100%;margin-top:8px">🗂 Explorar archivos del repositorio</button>
+    <button class="btn btn-ghost" onclick="downloadRepoZip()" style="width:100%;margin-top:8px">⬇ Descargar repositorio completo (.zip)</button>
   </div>
 
 </div>
@@ -776,6 +801,7 @@
   <div class="explorer-header">
     <button class="btn btn-ghost" onclick="closeExplorer()" style="padding:6px 12px">← Volver</button>
     <h2 id="explorerRepoLabel">Archivos del repositorio</h2>
+    <button class="btn btn-ghost" onclick="downloadRepoZip()" style="padding:6px 10px;font-size:10px;flex-shrink:0">⬇ ZIP</button>
   </div>
   <div class="explorer-body">
     <div class="explorer-breadcrumb" id="explorerBreadcrumb">
@@ -792,6 +818,9 @@
       </div>
     </div>
     <div id="explorerAlert" class="alert"></div>
+    <div style="margin-bottom:10px;position:relative">
+      <input type="text" id="explorerSearch" class="input" placeholder="🔍 Filtrar archivos..." oninput="filterExplorer(this.value)" style="font-size:12px">
+    </div>
     <div id="explorerList"></div>
   </div>
 </div>
@@ -1166,6 +1195,9 @@
     showSection('upload');
     document.getElementById('summaryCard').style.display = 'none';
     document.getElementById('uploadAlert').className = 'alert';
+    // Show repo name in banner
+    const bannerName = document.getElementById('repoBannerName');
+    if (bannerName) bannerName.textContent = selectedRepo.full_name;
   }
 
   function goToRepos() { stopPagesMonitor(); showSection('repo'); }
@@ -1183,7 +1215,12 @@
       dz.addEventListener('dragleave', () => dz.classList.remove('dragging'));
       dz.addEventListener('drop', e => {
         e.preventDefault(); dz.classList.remove('dragging');
-        handleFiles(e.dataTransfer.files);
+        const items = e.dataTransfer.items;
+        if (items && items.length) {
+          handleDropItems(items);
+        } else {
+          handleFiles(e.dataTransfer.files);
+        }
       });
     }
     // Drag and drop for token file
@@ -1206,10 +1243,61 @@
     preview.innerHTML = `Destino: <span>${p}</span>`;
   }
 
-  function handleFiles(fileList) {
+  function handleFiles(fileList, basePath) {
     Array.from(fileList).forEach(file => {
-      if (!files.find(f => f.originalName === file.name && f.file.size === file.size)) {
-        files.push({ file, name: file.name, originalName: file.name, status: 'pending' });
+      // Preserve folder structure: use webkitRelativePath or provided basePath
+      const relPath = basePath ? basePath + '/' + file.name
+                    : (file.webkitRelativePath || file.name);
+      // Display name = last segment; upload name = full relative path
+      const displayName = relPath.split('/').pop();
+      const uploadName = relPath;
+      if (!files.find(f => f.uploadName === uploadName && f.file.size === file.size)) {
+        files.push({ file, name: uploadName, originalName: uploadName, displayName, status: 'pending' });
+      }
+    });
+    renderFileQueue();
+  }
+
+  function handleFolderFiles(fileList) {
+    Array.from(fileList).forEach(file => {
+      const relPath = file.webkitRelativePath || file.name;
+      const displayName = relPath.split('/').pop();
+      if (!files.find(f => f.name === relPath && f.file.size === file.size)) {
+        files.push({ file, name: relPath, originalName: relPath, displayName, status: 'pending' });
+      }
+    });
+    renderFileQueue();
+  }
+
+  async function handleDropItems(items) {
+    const fileEntries = [];
+    const readEntry = (entry, path) => new Promise(resolve => {
+      if (entry.isFile) {
+        entry.file(file => {
+          Object.defineProperty(file, 'webkitRelativePath', { value: path + file.name });
+          fileEntries.push(file);
+          resolve();
+        });
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const readAll = (cb) => {
+          reader.readEntries(entries => {
+            if (!entries.length) return cb();
+            Promise.all(entries.map(e => readEntry(e, path + entry.name + '/'))).then(() => readAll(cb));
+          });
+        };
+        readAll(resolve);
+      } else resolve();
+    });
+    const promises = Array.from(items)
+      .filter(i => i.kind === 'file')
+      .map(i => { const e = i.webkitGetAsEntry(); return e ? readEntry(e, '') : Promise.resolve(); });
+    await Promise.all(promises);
+    fileEntries.forEach(file => {
+      const relPath = file.webkitRelativePath || file.name;
+      const displayName = relPath.split('/').pop();
+      if (!files.find(f => f.name === relPath && f.file.size === file.size)) {
+        files.push({ file, name: relPath, originalName: relPath, displayName, status: 'pending' });
       }
     });
     renderFileQueue();
@@ -1221,8 +1309,10 @@
     if (files.length === 0) { document.getElementById('uploadFooter').style.display = 'none'; return; }
 
     files.forEach((f, i) => {
-      const ext = f.name.split('.').pop().toUpperCase() || 'FILE';
+      const displayN = f.displayName || f.name.split('/').pop();
+      const ext = displayN.split('.').pop().toUpperCase() || 'FILE';
       const size = formatSize(f.file.size);
+      const folderPath = f.name.includes('/') ? f.name.substring(0, f.name.lastIndexOf('/') + 1) : '';
       const div = document.createElement('div');
       div.className = 'file-item';
       div.id = `file-${i}`;
@@ -1230,8 +1320,8 @@
         <div class="file-row">
           <div class="file-ext">${ext}</div>
           <div class="file-info">
-            <div class="file-name-display" id="fname-${i}">${f.name}</div>
-            ${f.name !== f.originalName ? `<div class="file-original">Original: ${f.originalName}</div>` : ''}
+            <div class="file-name-display" id="fname-${i}">${displayN}</div>
+            ${folderPath ? `<div class="file-original" style="color:var(--accent2)">📁 ${folderPath}</div>` : ''}
             <div class="file-size">${size}</div>
           </div>
           <div class="file-actions">
@@ -1656,6 +1746,10 @@
       });
 
       list.innerHTML = '';
+      _explorerItems = [];
+      // Clear search on navigation
+      const searchEl = document.getElementById('explorerSearch');
+      if (searchEl) searchEl.value = '';
       sorted.forEach(item => {
         const isDir = item.type === 'dir';
         const icon = isDir ? '📁' : getFileIcon(item.name);
@@ -1671,10 +1765,11 @@
           <div class="explorer-item-actions">
             ${isDir
               ? `<button class="btn btn-ghost" onclick="explorerNavigate('${item.path.replace(/'/g,"\\'")}')">Abrir →</button>`
-              : `<button class="btn btn-ghost" onclick="askDeleteFile('${item.path.replace(/'/g,"\\'")}','${(item.sha||'').replace(/'/g,"\\'")}','${item.name.replace(/'/g,"\\'")}')">🗑 Eliminar</button>`
+              : `<button class="btn btn-ghost" style="font-size:10px;padding:5px 8px" title="Descargar" onclick="downloadFile('${item.download_url}','${item.name.replace(/'/g,"\\'")}')">⬇</button><button class="btn btn-ghost" style="font-size:10px;padding:5px 8px" title="Renombrar/Mover" onclick="openRenameFileModal('${item.path.replace(/'/g,"\\'")}','${item.name.replace(/'/g,"\\'")}')">✎</button><button class="btn btn-ghost" style="font-size:10px;padding:5px 8px" title="Eliminar" onclick="askDeleteFile('${item.path.replace(/'/g,"\\'")}','${(item.sha||'').replace(/'/g,"\\'")}','${item.name.replace(/'/g,"\\'")}')">🗑</button>`
             }
           </div>
         `;
+        _explorerItems.push({ name: item.name, el: div });
         list.appendChild(div);
       });
     } catch(e) {
@@ -2097,6 +2192,175 @@
       if (t < 1) requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
+  }
+
+
+
+  // ─── Buscar repositorio (Mejora 6) ──────────────────────────────────────
+  function filterRepos(query) {
+    const q = query.toLowerCase().trim();
+    const allRepos = window._allRepos || [];
+    if (!q) { renderRepoList(allRepos); return; }
+    const filtered = allRepos.filter(r =>
+      r.name.toLowerCase().includes(q) || r.full_name.toLowerCase().includes(q)
+    );
+    renderRepoList(filtered);
+  }
+
+  // ─── Buscar archivos en explorador (Mejora 1) ────────────────────────────
+  let _explorerItems = []; // cache last loaded items
+
+  function filterExplorer(query) {
+    const q = query.toLowerCase().trim();
+    const list = document.getElementById('explorerList');
+    if (!_explorerItems.length) return;
+    list.innerHTML = '';
+    const filtered = q
+      ? _explorerItems.filter(item => item.name.toLowerCase().includes(q))
+      : _explorerItems;
+    if (!filtered.length) {
+      list.innerHTML = '<div class="explorer-empty">Sin resultados.</div>';
+      return;
+    }
+    filtered.forEach(item => list.appendChild(item.el));
+  }
+
+  // ─── Renombrar / Mover archivo (Mejora 5) ───────────────────────────────
+  let _renameFileData = null;
+
+  function openRenameFileModal(filePath, fileName) {
+    _renameFileData = { path: filePath };
+    // Build modal if not exists
+    let modal = document.getElementById('renameFileModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'renameFileModal';
+      modal.className = 'rename-modal-overlay';
+      modal.innerHTML = `
+        <div class="rename-modal">
+          <div class="modal-title">✎ Renombrar / Mover archivo</div>
+          <div class="modal-subtitle">Cambia el nombre o la ruta del archivo dentro del repositorio. Usa <code style="color:var(--accent);font-size:11px">carpeta/nombre.ext</code> para moverlo.</div>
+          <div class="field" style="margin-top:14px">
+            <label>Nueva ruta / nombre</label>
+            <input type="text" id="renameFileInput" class="input" placeholder="carpeta/nuevo-nombre.html"
+              onkeydown="if(event.key==='Enter') confirmRenameFile()">
+          </div>
+          <div id="renameFileAlert" class="alert" style="margin-top:8px"></div>
+          <div class="modal-actions" style="margin-top:14px">
+            <button class="btn btn-ghost" onclick="closeRenameFileModal()">Cancelar</button>
+            <button class="btn btn-primary" id="confirmRenameFileBtn" onclick="confirmRenameFile()">
+              <span id="renameFileSpinner" class="spinner"></span>
+              <span id="renameFileBtnText">Renombrar</span>
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+    }
+    document.getElementById('renameFileInput').value = filePath;
+    document.getElementById('renameFileAlert').className = 'alert';
+    document.getElementById('renameFileBtnText').textContent = 'Renombrar';
+    document.getElementById('confirmRenameFileBtn').disabled = false;
+    modal.classList.add('visible');
+    setTimeout(() => document.getElementById('renameFileInput').focus(), 100);
+  }
+
+  function closeRenameFileModal() {
+    const m = document.getElementById('renameFileModal');
+    if (m) m.classList.remove('visible');
+    _renameFileData = null;
+  }
+
+  async function confirmRenameFile() {
+    if (!_renameFileData || !selectedRepo) return;
+    const newPath = document.getElementById('renameFileInput').value.trim();
+    const oldPath = _renameFileData.path;
+    const alertEl = document.getElementById('renameFileAlert');
+
+    if (!newPath) { alertEl.className = 'alert error visible'; alertEl.textContent = 'Ingresa la nueva ruta.'; return; }
+    if (newPath === oldPath) { alertEl.className = 'alert error visible'; alertEl.textContent = 'La ruta es igual a la actual.'; return; }
+
+    document.getElementById('renameFileSpinner').classList.add('visible');
+    document.getElementById('renameFileBtnText').textContent = 'Procesando...';
+    document.getElementById('confirmRenameFileBtn').disabled = true;
+
+    try {
+      const branch = selectedRepo.default_branch || 'main';
+      // 1. Get current file content
+      const fileData = await ghGet(`/repos/${selectedRepo.full_name}/contents/${encodeURIComponent(oldPath)}?ref=${branch}`);
+      if (!fileData.content) throw new Error('No se pudo leer el archivo original.');
+
+      // 2. Create file at new path
+      const createRes = await ghPut(`/repos/${selectedRepo.full_name}/contents/${encodeURIComponent(newPath)}`, {
+        message: `Rename ${oldPath} → ${newPath} via GitDeploy`,
+        content: fileData.content.replace(/\n/g, ''),
+        branch
+      });
+      if (!createRes.content && !createRes.commit) throw new Error(createRes.message || 'No se pudo crear el archivo en la nueva ruta.');
+
+      // 3. Delete old file
+      await fetch(`https://api.github.com/repos/${selectedRepo.full_name}/contents/${encodeURIComponent(oldPath)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `Remove old path ${oldPath} via GitDeploy`, sha: fileData.sha, branch })
+      });
+
+      closeRenameFileModal();
+      const exAlert = document.getElementById('explorerAlert');
+      exAlert.className = 'alert success visible';
+      exAlert.textContent = `✓ Archivo movido a "${newPath}" correctamente.`;
+      setTimeout(() => { exAlert.className = 'alert'; }, 5000);
+      await explorerNavigate(explorerPath);
+    } catch(e) {
+      alertEl.className = 'alert error visible';
+      alertEl.textContent = '✗ ' + e.message;
+    }
+
+    document.getElementById('renameFileSpinner').classList.remove('visible');
+    document.getElementById('renameFileBtnText').textContent = 'Renombrar';
+    document.getElementById('confirmRenameFileBtn').disabled = false;
+  }
+
+  // ─── Download functions ───────────────────────────────────────────────────
+  function downloadFile(url, filename) {
+    if (!url) { alert('No hay URL de descarga para este archivo.'); return; }
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  async function downloadRepoZip() {
+    if (!selectedRepo) return;
+    const branch = selectedRepo.default_branch || 'main';
+    const repoName = selectedRepo.name || selectedRepo.full_name.split('/')[1];
+    const zipUrl = `https://api.github.com/repos/${selectedRepo.full_name}/zipball/${branch}`;
+
+    // Show loading state on whichever button triggered it
+    const zipBtns = document.querySelectorAll('[onclick="downloadRepoZip()"]');
+    zipBtns.forEach(b => { b.disabled = true; b.style.opacity = '0.6'; });
+
+    try {
+      const response = await fetch(zipUrl, {
+        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
+      });
+      if (!response.ok) throw new Error('No se pudo obtener el archivo ZIP');
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${repoName}-${branch}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    } catch(e) {
+      alert('Error al descargar: ' + e.message);
+    }
+
+    zipBtns.forEach(b => { b.disabled = false; b.style.opacity = ''; });
   }
 
   // Enter key on token input
