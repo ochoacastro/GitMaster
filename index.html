@@ -503,6 +503,54 @@
     font-family: 'JetBrains Mono', monospace; text-transform: uppercase;
   }
   .btn-history-inline:hover { background: rgba(124,58,237,0.2); }
+
+  /* ── Pages live monitor ── */
+  .pages-monitor-bar {
+    background: rgba(0,255,136,0.04);
+    border: 1px solid rgba(0,255,136,0.18);
+    border-radius: 10px; padding: 14px;
+  }
+  .pages-monitor-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+    font-size: 12px; font-weight: 600;
+  }
+  .pages-monitor-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    background: var(--accent3);
+    box-shadow: 0 0 6px var(--accent3);
+    animation: monitorPulse 1.2s ease-in-out infinite;
+  }
+  .pages-monitor-dot.live {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: none;
+  }
+  .pages-monitor-dot.error {
+    background: var(--danger);
+    box-shadow: 0 0 6px var(--danger);
+    animation: none;
+  }
+  @keyframes monitorPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.85)} }
+  .pages-monitor-time {
+    margin-left: auto; font-size: 13px; font-family: 'Syne', sans-serif;
+    font-weight: 800; color: var(--accent3); letter-spacing: -0.5px; min-width: 38px; text-align: right;
+  }
+  .pages-monitor-time.live { color: var(--accent); }
+  .pages-monitor-track {
+    height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 10px; overflow: hidden;
+  }
+  .pages-monitor-fill {
+    height: 100%; width: 0%; border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent3), var(--accent));
+    transition: width 1s linear;
+  }
+  .pages-monitor-msg { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .pages-monitor-msg.live { color: var(--accent); }
+  .pages-monitor-link {
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    text-decoration: none; word-break: break-all;
+  }
+  .pages-monitor-link:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -691,6 +739,26 @@
           <div class="summary-lbl">Fallidos</div>
         </div>
       </div>
+
+      <!-- Pages live monitor -->
+      <div id="pagesMonitorCard" style="display:none;margin-top:14px">
+        <div class="pages-monitor-bar">
+          <div class="pages-monitor-header">
+            <span class="pages-monitor-dot" id="pagesMonitorDot"></span>
+            <span id="pagesMonitorTitle">🌐 Monitoreando GitHub Pages...</span>
+            <span id="pagesMonitorTimer" class="pages-monitor-time">0s</span>
+          </div>
+          <div class="pages-monitor-track">
+            <div class="pages-monitor-fill" id="pagesMonitorFill"></div>
+          </div>
+          <div id="pagesMonitorMsg" class="pages-monitor-msg">Esperando que GitHub publique los cambios...</div>
+          <div id="pagesMonitorUrl" style="display:none;margin-top:8px">
+            <a id="pagesMonitorLink" href="#" target="_blank" class="pages-monitor-link"></a>
+          </div>
+          <button id="pagesMonitorStopBtn" class="btn btn-ghost" onclick="stopPagesMonitor()" style="width:100%;margin-top:10px;font-size:10px">Detener monitoreo</button>
+        </div>
+      </div>
+
       <div style="margin-top:12px; display:flex; gap:8px">
         <button class="btn btn-ghost" onclick="addMoreFiles()" style="flex:1">+ Más archivos</button>
         <button class="btn btn-ghost" onclick="goToRepos()" style="flex:1">Cambiar repo</button>
@@ -1100,7 +1168,7 @@
     document.getElementById('uploadAlert').className = 'alert';
   }
 
-  function goToRepos() { showSection('repo'); }
+  function goToRepos() { stopPagesMonitor(); showSection('repo'); }
 
   // Folder path preview
   document.addEventListener('DOMContentLoaded', () => {
@@ -1330,6 +1398,137 @@
     document.getElementById('summaryFail').textContent = fail;
     if (fail === 0) showAlert('uploadAlert', 'success', `✓ ${ok} archivo(s) subido(s) correctamente.`);
     else showAlert('uploadAlert', 'error', `${ok} subido(s), ${fail} fallido(s). Revisa los errores.`);
+
+    // Start Pages monitor if repo is public and had successful uploads
+    if (ok > 0 && !selectedRepo.private) {
+      startPagesMonitor();
+    }
+  }
+
+  // ─── GitHub Pages Live Monitor ────────────────────────────────────────────
+  let _monitorInterval = null;
+  let _monitorStart = null;
+  let _monitorMaxSeconds = 300; // 5 min timeout
+
+  async function startPagesMonitor() {
+    // Get Pages URL from GitHub API
+    let pagesUrl = '';
+    try {
+      const r = await fetch(`https://api.github.com/repos/${selectedRepo.full_name}/pages`, {
+        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
+      });
+      if (r.ok) {
+        const d = await r.json();
+        pagesUrl = d.html_url || d.url || '';
+      }
+    } catch(e) {}
+
+    if (!pagesUrl) return; // No Pages configured, skip monitor
+
+    // Get a fingerprint of the current deploy (latest commit sha)
+    let commitSha = '';
+    try {
+      const branch = selectedRepo.default_branch || 'main';
+      const ref = await ghGet(`/repos/${selectedRepo.full_name}/git/refs/heads/${branch}`);
+      commitSha = ref.object ? ref.object.sha.substring(0, 7) : '';
+    } catch(e) {}
+
+    // Show monitor card
+    const card = document.getElementById('pagesMonitorCard');
+    card.style.display = 'block';
+    document.getElementById('pagesMonitorDot').className = 'pages-monitor-dot';
+    document.getElementById('pagesMonitorTitle').textContent = '🌐 Monitoreando GitHub Pages...';
+    document.getElementById('pagesMonitorTimer').className = 'pages-monitor-time';
+    document.getElementById('pagesMonitorTimer').textContent = '0s';
+    document.getElementById('pagesMonitorFill').style.width = '0%';
+    document.getElementById('pagesMonitorMsg').className = 'pages-monitor-msg';
+    document.getElementById('pagesMonitorMsg').textContent = 'Esperando que GitHub publique los cambios...';
+    document.getElementById('pagesMonitorUrl').style.display = 'none';
+    document.getElementById('pagesMonitorStopBtn').style.display = 'block';
+
+    _monitorStart = Date.now();
+
+    // We fetch the page and look for a change — cache-busting with timestamp
+    // Strategy: fetch the page, compare ETag or content hash across polls
+    let lastEtag = '';
+    let lastContent = '';
+    let detected = false;
+
+    // Initial fetch to get baseline
+    try {
+      const init = await fetch(pagesUrl + '?_=' + Date.now(), { cache: 'no-store' });
+      lastEtag = init.headers.get('etag') || '';
+      lastContent = await init.text();
+    } catch(e) {}
+
+    _monitorInterval = setInterval(async () => {
+      const elapsed = Math.floor((Date.now() - _monitorStart) / 1000);
+      const progress = Math.min((elapsed / _monitorMaxSeconds) * 100, 98);
+
+      // Update timer and progress bar
+      document.getElementById('pagesMonitorTimer').textContent = elapsed >= 60
+        ? `${Math.floor(elapsed/60)}m ${elapsed%60}s`
+        : `${elapsed}s`;
+      document.getElementById('pagesMonitorFill').style.width = progress + '%';
+
+      // Timeout
+      if (elapsed >= _monitorMaxSeconds) {
+        stopPagesMonitor();
+        document.getElementById('pagesMonitorMsg').textContent = '⏱ Tiempo de espera agotado (5 min). Verifica manualmente.';
+        document.getElementById('pagesMonitorDot').className = 'pages-monitor-dot error';
+        return;
+      }
+
+      // Poll the Pages URL
+      try {
+        const res = await fetch(pagesUrl + '?_=' + Date.now(), { cache: 'no-store' });
+        const newEtag = res.headers.get('etag') || '';
+        const newContent = await res.text();
+
+        const changed = (newEtag && newEtag !== lastEtag) ||
+                        (newContent && newContent !== lastContent);
+
+        if (changed && !detected) {
+          detected = true;
+          stopPagesMonitor(false); // stop interval but keep card visible
+          document.getElementById('pagesMonitorFill').style.width = '100%';
+          document.getElementById('pagesMonitorDot').className = 'pages-monitor-dot live';
+          document.getElementById('pagesMonitorTitle').textContent = '✓ ¡Cambios publicados!';
+          document.getElementById('pagesMonitorTimer').className = 'pages-monitor-time live';
+          document.getElementById('pagesMonitorMsg').className = 'pages-monitor-msg live';
+          document.getElementById('pagesMonitorMsg').textContent =
+            `Actualización detectada en ${elapsed >= 60 ? Math.floor(elapsed/60)+'m '+elapsed%60+'s' : elapsed+'s'} · GitHub Pages está live.`;
+          const urlEl = document.getElementById('pagesMonitorUrl');
+          urlEl.style.display = 'block';
+          const link = document.getElementById('pagesMonitorLink');
+          link.href = pagesUrl;
+          link.textContent = `🌐 ${pagesUrl} ↗`;
+          document.getElementById('pagesMonitorStopBtn').textContent = 'Cerrar';
+        } else {
+          // Still waiting — update status message
+          const dots = '.'.repeat((elapsed % 3) + 1);
+          document.getElementById('pagesMonitorMsg').textContent =
+            `Esperando cambios${dots} (GitHub suele tardar entre 30s y 3 min)`;
+          lastEtag = newEtag || lastEtag;
+          lastContent = newContent || lastContent;
+        }
+      } catch(e) {
+        // Fetch error — keep trying
+        document.getElementById('pagesMonitorMsg').textContent = `⚠ Sin respuesta del servidor, reintentando... (${elapsed}s)`;
+      }
+    }, 5000); // poll every 5 seconds
+  }
+
+  function stopPagesMonitor(hide = true) {
+    if (_monitorInterval) { clearInterval(_monitorInterval); _monitorInterval = null; }
+    if (hide) {
+      document.getElementById('pagesMonitorCard').style.display = 'none';
+    } else {
+      document.getElementById('pagesMonitorStopBtn').textContent = 'Cerrar';
+      document.getElementById('pagesMonitorStopBtn').onclick = () => {
+        document.getElementById('pagesMonitorCard').style.display = 'none';
+      };
+    }
   }
 
   // ─── History & Rollback ───────────────────────────────────────────────────
