@@ -1765,7 +1765,7 @@
           <div class="explorer-item-actions">
             ${isDir
               ? `<button class="btn btn-ghost" onclick="explorerNavigate('${item.path.replace(/'/g,"\\'")}')">Abrir →</button>`
-              : `<button class="btn btn-ghost" style="font-size:10px;padding:5px 8px" title="Descargar" onclick="downloadFile('${item.download_url}','${item.name.replace(/'/g,"\\'")}')">⬇</button><button class="btn btn-ghost" style="font-size:10px;padding:5px 8px" title="Renombrar/Mover" onclick="openRenameFileModal('${item.path.replace(/'/g,"\\'")}','${item.name.replace(/'/g,"\\'")}')">✎</button><button class="btn btn-ghost" style="font-size:10px;padding:5px 8px" title="Eliminar" onclick="askDeleteFile('${item.path.replace(/'/g,"\\'")}','${(item.sha||'').replace(/'/g,"\\'")}','${item.name.replace(/'/g,"\\'")}')">🗑</button>`
+              : `<button class="btn btn-ghost" style="font-size:10px;padding:5px 8px" title="Copiar código" onclick="downloadFile('${item.path.replace(/'/g,"\\'")}','${item.name.replace(/'/g,"\\'")}')">📋</button><button class="btn btn-ghost" style="font-size:10px;padding:5px 8px" title="Renombrar/Mover" onclick="openRenameFileModal('${item.path.replace(/'/g,"\\'")}','${item.name.replace(/'/g,"\\'")}')">✎</button><button class="btn btn-ghost" style="font-size:10px;padding:5px 8px" title="Eliminar" onclick="askDeleteFile('${item.path.replace(/'/g,"\\'")}','${(item.sha||'').replace(/'/g,"\\'")}','${item.name.replace(/'/g,"\\'")}')">🗑</button>`
             }
           </div>
         `;
@@ -2321,16 +2321,53 @@
   }
 
   // ─── Download functions ───────────────────────────────────────────────────
-  function downloadFile(url, filename) {
-    if (!url) { alert("No hay URL de descarga para este archivo."); return; }
-    const finalUrl = url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token);
-    const a = document.createElement("a");
-    a.href = finalUrl;
-    a.download = filename;
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  async function downloadFile(filePath, filename) {
+    if (!filePath) { alert("No hay ruta de descarga para este archivo."); return; }
+    try {
+      const branch = selectedRepo.default_branch || 'main';
+      const apiPath = `/repos/${selectedRepo.full_name}/contents/${filePath}?ref=${branch}`;
+      const data = await ghGet(apiPath);
+      if (!data || !data.content) throw new Error('No se pudo obtener el contenido');
+      const b64 = data.content.replace(/\n/g, '');
+      const binary = atob(b64);
+      const fileText = binary;
+      await navigator.clipboard.writeText(fileText);
+      showCopyModal(filename);
+    } catch (e) {
+      alert('Error al obtener el archivo: ' + e.message);
+    }
+  }
+
+  function showCopyModal(filename) {
+    let modal = document.getElementById('copyModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'copyModal';
+      modal.style.cssText = `
+        position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+        background:rgba(0,0,0,0.75);padding:20px;
+      `;
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+      <div style="background:#13131c;border:1px solid #00ff88;border-radius:14px;padding:24px;max-width:340px;width:100%;font-family:'JetBrains Mono',monospace;">
+        <div style="font-size:32px;text-align:center;margin-bottom:12px">📋</div>
+        <div style="color:#00ff88;font-size:13px;font-weight:700;text-align:center;margin-bottom:8px">¡Código copiado!</div>
+        <div style="color:#e2e8f0;font-size:12px;text-align:center;margin-bottom:16px;line-height:1.6">
+          Ahora abre un editor de texto (como <strong>QuickEdit</strong> o <strong>Acode</strong>),
+          pega el contenido y guarda el archivo como:<br><br>
+          <span style="color:#00ff88;font-size:13px;background:rgba(0,255,136,0.08);padding:4px 10px;border-radius:6px">${filename}</span>
+        </div>
+        <div style="color:#64748b;font-size:10px;text-align:center;margin-bottom:16px;letter-spacing:1px">
+          PEGAR → GUARDAR COMO → ESCRIBIR NOMBRE CON .html
+        </div>
+        <button onclick="document.getElementById('copyModal').style.display='none'"
+          style="width:100%;padding:10px;background:#00ff88;color:#0a0a0f;border:none;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:1px">
+          ENTENDIDO
+        </button>
+      </div>
+    `;
+    modal.style.display = 'flex';
   }
 
   async function downloadRepoZip() {
