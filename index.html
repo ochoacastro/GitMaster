@@ -2321,25 +2321,16 @@
   }
 
   // ─── Download functions ───────────────────────────────────────────────────
-  async function downloadFile(url, filename) {
-    if (!url) { alert('No hay URL de descarga para este archivo.'); return; }
-    try {
-      const response = await fetch(url, {
-        headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3.raw' }
-      });
-      if (!response.ok) throw new Error('Error al obtener el archivo');
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-    } catch (e) {
-      alert('No se pudo descargar el archivo: ' + e.message);
-    }
+  function downloadFile(url, filename) {
+    if (!url) { alert("No hay URL de descarga para este archivo."); return; }
+    const finalUrl = url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token);
+    const a = document.createElement("a");
+    a.href = finalUrl;
+    a.download = filename;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   async function downloadRepoZip() {
