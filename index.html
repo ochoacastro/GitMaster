@@ -1317,6 +1317,14 @@
       btn.onclick = uploadAll;
       document.getElementById('uploadBtnText').textContent = 'Subir todos los archivos';
     }
+    // Reset inputs para que onchange dispare aunque sea el mismo archivo (importante en mobile)
+    const fi = document.getElementById('fileInput');
+    if (fi) fi.value = '';
+    const fol = document.getElementById('folderInput');
+    if (fol) fol.value = '';
+    // Scroll al dropzone para que el usuario vea que está listo para otro archivo
+    const dz = document.getElementById('dropzone');
+    if (dz) dz.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function renderFileQueue() {
@@ -1374,6 +1382,7 @@
     const origExt = files[i].originalName.split('.').pop();
     if (!newName.includes('.') && origExt) newName += '.' + origExt;
     files[i].name = newName;
+    files[i].displayName = newName.split('/').pop();
     document.getElementById(`rename-${i}`).classList.remove('visible');
     renderFileQueue();
   }
@@ -1387,7 +1396,12 @@
     files = files.filter(f => f.status !== 'success');
     renderFileQueue();
     document.getElementById('summaryCard').style.display = 'none';
-    document.getElementById('fileInput').value = '';
+    const fi = document.getElementById('fileInput');
+    if (fi) fi.value = '';
+    const fol = document.getElementById('folderInput');
+    if (fol) fol.value = '';
+    const dz = document.getElementById('dropzone');
+    if (dz) dz.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   // ─── Overwrite confirmation ──────────────────────────────────────────────
@@ -1498,7 +1512,7 @@
     }
 
     if (ok > 0) {
-      document.getElementById('uploadBtnText').textContent = '+ Subir nuevo archivo';
+      document.getElementById('uploadBtnText').textContent = '↑ Subir otro archivo';
       document.getElementById('uploadAllBtn').disabled = false;
       document.getElementById('uploadAllBtn').onclick = () => { resetUploadArea(); };
     } else {
