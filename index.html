@@ -1899,13 +1899,23 @@
       });
       const data = await r.json();
       if (r.ok || data.commit) {
+        // Quitar el item del DOM inmediatamente (no depender del cache)
+        _explorerItems = _explorerItems.filter(i => i.name !== name);
+        const list = document.getElementById('explorerList');
+        list.querySelectorAll('.explorer-item').forEach(el => {
+          const nameEl = el.querySelector('.explorer-item-name');
+          if (nameEl && nameEl.textContent === name) el.remove();
+        });
+        if (!list.querySelector('.explorer-item')) {
+          list.innerHTML = '<div class="explorer-empty">Carpeta vacía.</div>';
+        }
         cancelDelete();
         const alertEl = document.getElementById('explorerAlert');
         alertEl.className = 'alert success visible';
         alertEl.textContent = `✓ "${name}" eliminado correctamente.`;
         setTimeout(() => { alertEl.className = 'alert'; }, 4000);
-        // Refresh current folder
-        await explorerNavigate(explorerPath);
+        // Refrescar en segundo plano para sincronizar con GitHub
+        explorerNavigate(explorerPath);
       } else {
         throw new Error(data.message || 'No se pudo eliminar el archivo');
       }
@@ -2223,8 +2233,12 @@
 
   // ─── GitHub API helpers ───────────────────────────────────────────────────
   async function ghGet(path) {
-    const r = await fetch(`https://api.github.com${path}`, {
-      headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
+    // Añadir timestamp para evitar respuestas cacheadas del browser
+    const sep = path.includes('?') ? '&' : '?';
+    const url = `https://api.github.com${path}${sep}_t=${Date.now()}`;
+    const r = await fetch(url, {
+      headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' },
+      cache: 'no-store'
     });
     return r.json();
   }
