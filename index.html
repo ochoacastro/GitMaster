@@ -865,12 +865,11 @@
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px" id="buildYmlSetup">
         <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--accent2);margin-bottom:8px">⚙️ Configurar Workflow</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">
-          Si aún no tienes <code style="color:var(--accent)">.github/workflows/build.yml</code>, créalo aquí. Funciona con cualquier nombre de repositorio y cualquier <code style="color:var(--accent)">.zip</code> del proyecto.
+          Si aún no tienes <code style="color:var(--accent)">.github/workflows/build.yml</code>, créalo aquí. El .zip del proyecto se detecta automáticamente del repositorio.
         </div>
         <div class="field" style="margin-bottom:8px">
-          <label style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">Nombre del archivo ZIP del proyecto</label>
-          <input type="text" id="buildZipName" class="input" placeholder="MiProyecto.zip" style="font-size:12px">
-          <div style="font-size:10px;color:var(--muted);margin-top:4px">Nombre exacto del .zip que subes al repo (p.ej. <code style="color:var(--accent)">AutoRedial.zip</code>)</div>
+          <label style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">Archivo ZIP del proyecto (auto-detectado)</label>
+          <input type="text" id="buildZipName" class="input" placeholder="Buscando .zip..." style="font-size:12px">
         </div>
         <div id="buildYmlAlert" class="alert" style="margin-bottom:8px"></div>
         <button class="btn btn-ghost" id="createBuildYmlBtn" onclick="createBuildYml()" style="width:100%;border-color:var(--accent2);color:var(--accent2)">
@@ -1329,6 +1328,37 @@
     // Show repo name in banner (solo nombre, sin usuario)
     const bannerName = document.getElementById('repoBannerName');
     if (bannerName) bannerName.textContent = selectedRepo.name || selectedRepo.full_name.split('/')[1];
+    // Auto-detectar .zip del repo para el campo buildZipName
+    autoDetectRepoZip();
+  }
+
+  async function autoDetectRepoZip() {
+    if (!selectedRepo) return;
+    const input = document.getElementById('buildZipName');
+    if (!input) return;
+    input.value = '';
+    input.placeholder = 'Buscando .zip en el repo...';
+    try {
+      const branch = selectedRepo.default_branch || 'main';
+      const items = await ghGet('/repos/' + selectedRepo.full_name + '/contents?ref=' + branch);
+      if (Array.isArray(items)) {
+        const zip = items.find(f => f.type === 'file' && f.name.toLowerCase().endsWith('.zip'));
+        if (zip) {
+          input.value = zip.name;
+          input.placeholder = 'MiProyecto.zip';
+          try {
+            await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent('.github/workflows/build.yml') + '?ref=' + branch);
+            document.getElementById('buildYmlAlert').className = 'alert success visible';
+            document.getElementById('buildYmlAlert').textContent = 'build.yml ya existe en este repositorio';
+            document.getElementById('buildYmlBtnText').textContent = 'Actualizar build.yml';
+          } catch(e) {}
+        } else {
+          input.placeholder = 'MiProyecto.zip (no se encontro ningun .zip)';
+        }
+      }
+    } catch(e) {
+      input.placeholder = 'MiProyecto.zip';
+    }
   }
 
   function goToRepos() { stopPagesMonitor(); showSection('repo'); }
@@ -2975,6 +3005,12 @@ jobs:
           ? '✓ build.yml actualizado en .github/workflows/'
           : '✓ build.yml creado en .github/workflows/ — ya puedes compilar el APK';
         btnText.textContent = '✓ build.yml listo';
+      } else if (res.message && (res.message.toLowerCase().includes('not found') || res.message.toLowerCase().includes('resource not accessible'))) {
+        alertEl.className = 'alert error visible';
+        alertEl.innerHTML = '✗ Tu token no tiene permiso <strong style="color:#fca5a5">workflow</strong>.<br><br>' +
+          'Ve a <a href="https://github.com/settings/tokens" target="_blank" style="color:var(--accent)">github.com/settings/tokens</a>, ' +
+          'edita tu token y activa el scope <strong style="color:#fca5a5">workflow</strong>. Luego vuelve a intentarlo.';
+        btnText.textContent = '📄 Crear .github/workflows/build.yml';
       } else {
         throw new Error(res.message || 'Error al crear el archivo');
       }
