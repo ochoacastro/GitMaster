@@ -3016,33 +3016,32 @@
 "          set -e\n" +
 "      - name: Create fallback icons\n" +
 "        run: |\n" +
-"          cat << 'PYEOF' > /tmp/make_icons.py\n" +
-"import os, struct, zlib\n" +
-"def make_png(size):\n" +
-"    def chunk(name, data):\n" +
-"        c = zlib.crc32(name + data) & 0xffffffff\n" +
-"        return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)\n" +
-"    raw = b''\n" +
-"    for y in range(size):\n" +
-"        raw += b'\\x00'\n" +
-"        for x in range(size):\n" +
-"            raw += b'\\x4c\\xaf\\x50\\xff'\n" +
-"    compressed = zlib.compress(raw)\n" +
-"    return (b'\\x89PNG\\r\\n\\x1a\\n' +\n" +
-"            chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0)) +\n" +
-"            chunk(b'IDAT', compressed) +\n" +
-"            chunk(b'IEND', b''))\n" +
-"for dpi in ['mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi']:\n" +
-"    pdir = os.environ.get('PROJECT_DIR','project/app')\n" +
-"    path = pdir + '/app/src/main/res/mipmap-' + dpi\n" +
-"    os.makedirs(path, exist_ok=True)\n" +
-"    for nm in ['ic_launcher.png','ic_launcher_round.png']:\n" +
-"        dest = path + '/' + nm\n" +
-"        if not os.path.exists(dest):\n" +
-"            open(dest,'wb').write(make_png(48))\n" +
-"print('Icons ready')\n" +
-"PYEOF\n" +
-"          python3 /tmp/make_icons.py\n" +
+"          python3 -c \"\n" +
+"          import os, struct, zlib\n" +
+"          def make_png(size):\n" +
+"              def chunk(name, data):\n" +
+"                  c = zlib.crc32(name + data) & 0xffffffff\n" +
+"                  return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)\n" +
+"              raw = b''\n" +
+"              for y in range(size):\n" +
+"                  raw += b'\\x00'\n" +
+"                  for x in range(size):\n" +
+"                      raw += b'\\x4c\\xaf\\x50\\xff'\n" +
+"              compressed = zlib.compress(raw)\n" +
+"              return (b'\\x89PNG\\r\\n\\x1a\\n' +\n" +
+"                      chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0)) +\n" +
+"                      chunk(b'IDAT', compressed) +\n" +
+"                      chunk(b'IEND', b''))\n" +
+"          for dpi in ['mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi']:\n" +
+"              pdir = os.environ.get('PROJECT_DIR','project/app')\n" +
+"              path = pdir + '/app/src/main/res/mipmap-' + dpi\n" +
+"              os.makedirs(path, exist_ok=True)\n" +
+"              for nm in ['ic_launcher.png','ic_launcher_round.png']:\n" +
+"                  dest = path + '/' + nm\n" +
+"                  if not os.path.exists(dest):\n" +
+"                      open(dest,'wb').write(make_png(48))\n" +
+"          print('Icons ready')\n" +
+"          \"\n" +
 "      - name: Build APK\n" +
 "        run: |\n" +
 '          cd $PROJECT_DIR\n' +
