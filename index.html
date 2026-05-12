@@ -835,17 +835,18 @@
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">
           Requisitos del ícono:
           <ul style="margin:6px 0 0 16px;line-height:1.8">
-            <li>Formato: <strong style="color:var(--text)">PNG</strong></li>
-            <li>Tamaño: <strong style="color:var(--text)">512×512 px</strong> (mínimo 192×192 px)</li>
+            <li>Formato: <strong style="color:var(--text)">PNG / SVG</strong> (también JPG, WEBP)</li>
+            <li>Tamaño PNG: <strong style="color:var(--text)">512×512 px</strong> (mínimo 192×192 px)</li>
+            <li>SVG: se sube directamente como <code style="color:var(--accent)">app_icon.svg</code></li>
             <li>Fondo: preferiblemente sin transparencia para compatibilidad</li>
             <li>Peso máximo: <strong style="color:var(--text)">1 MB</strong></li>
           </ul>
         </div>
         <div id="iconDropZone" style="border:2px dashed var(--border);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:all 0.2s" onclick="document.getElementById('iconFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleIconDrop(event)">
-          <input type="file" id="iconFileInput" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handleIconSelect(this.files[0])">
+          <input type="file" id="iconFileInput" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="display:none" onchange="handleIconSelect(this.files[0])">
           <div style="font-size:28px;margin-bottom:6px">🖼️</div>
           <div style="font-size:12px;color:var(--muted)"><strong style="color:var(--accent)">Toca para seleccionar</strong> o arrastra la imagen</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:4px">PNG · JPG · WEBP</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">PNG · JPG · WEBP · SVG</div>
         </div>
         <div id="iconPreviewArea" style="display:none;margin-top:10px">
           <div style="display:flex;align-items:center;gap:12px">
@@ -858,6 +859,24 @@
             <button onclick="clearIcon()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px">✕</button>
           </div>
         </div>
+      </div>
+
+      <!-- Crear build.yml -->
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px" id="buildYmlSetup">
+        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--accent2);margin-bottom:8px">⚙️ Configurar Workflow</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          Si aún no tienes <code style="color:var(--accent)">.github/workflows/build.yml</code>, créalo aquí. Funciona con cualquier nombre de repositorio y cualquier <code style="color:var(--accent)">.zip</code> del proyecto.
+        </div>
+        <div class="field" style="margin-bottom:8px">
+          <label style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">Nombre del archivo ZIP del proyecto</label>
+          <input type="text" id="buildZipName" class="input" placeholder="MiProyecto.zip" style="font-size:12px">
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">Nombre exacto del .zip que subes al repo (p.ej. <code style="color:var(--accent)">AutoRedial.zip</code>)</div>
+        </div>
+        <div id="buildYmlAlert" class="alert" style="margin-bottom:8px"></div>
+        <button class="btn btn-ghost" id="createBuildYmlBtn" onclick="createBuildYml()" style="width:100%;border-color:var(--accent2);color:var(--accent2)">
+          <span id="buildYmlSpinner" class="spinner"></span>
+          <span id="buildYmlBtnText">📄 Crear .github/workflows/build.yml</span>
+        </button>
       </div>
 
       <div id="apkAlert" class="alert"></div>
@@ -2632,11 +2651,11 @@
 
   function handleIconSelect(f) {
     if (!f) return;
-    const validTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    const validTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
     const alertEl = document.getElementById('apkAlert');
     if (!validTypes.includes(f.type)) {
       alertEl.className = 'alert error visible';
-      alertEl.textContent = 'Formato no valido. El icono debe ser PNG, JPG o WEBP.';
+      alertEl.textContent = 'Formato no valido. El icono debe ser PNG, JPG, WEBP o SVG.';
       return;
     }
     if (f.size > 1024 * 1024) {
@@ -2645,6 +2664,24 @@
       return;
     }
     alertEl.className = 'alert';
+
+    // SVG: skip dimension check, show directly
+    if (f.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        document.getElementById('iconPreviewImg').src = e.target.result;
+        document.getElementById('iconFileName').textContent = f.name;
+        document.getElementById('iconFileMeta').textContent = (f.size/1024).toFixed(1) + ' KB - SVG';
+        document.getElementById('iconValidation').textContent = 'SVG vectorial — se subirá como app_icon.svg';
+        document.getElementById('iconValidation').style.color = 'var(--accent)';
+        document.getElementById('iconPreviewArea').style.display = 'block';
+        document.getElementById('iconDropZone').style.display = 'none';
+        iconFile = f;
+      };
+      reader.readAsDataURL(f);
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
@@ -2704,7 +2741,7 @@
           r.readAsDataURL(iconFile);
         });
         const branch = selectedRepo.default_branch || 'main';
-        const iconPath = 'app_icon.png';
+        const iconPath = iconFile.type === 'image/svg+xml' ? 'app_icon.svg' : 'app_icon.png';
         let sha = undefined;
         try {
           const existing = await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + iconPath + '?ref=' + branch);
@@ -2809,6 +2846,145 @@
     }
     spinner.classList.remove('visible');
     btnText.textContent = '⬇ Descargar APK';
+    btn.disabled = false;
+  }
+
+  // ─── Crear build.yml ──────────────────────────────────────────────────────
+  async function createBuildYml() {
+    if (!selectedRepo) return;
+    const zipNameRaw = document.getElementById('buildZipName').value.trim();
+    const alertEl = document.getElementById('buildYmlAlert');
+    const btn = document.getElementById('createBuildYmlBtn');
+    const spinner = document.getElementById('buildYmlSpinner');
+    const btnText = document.getElementById('buildYmlBtnText');
+
+    if (!zipNameRaw) {
+      alertEl.className = 'alert error visible';
+      alertEl.textContent = '✗ Escribe el nombre del archivo .zip del proyecto (ej: MiApp.zip)';
+      return;
+    }
+    const zipName = zipNameRaw.endsWith('.zip') ? zipNameRaw : zipNameRaw + '.zip';
+    // Derive inner folder name (remove .zip)
+    const projectFolder = zipName.replace(/\.zip$/i, '');
+
+    alertEl.className = 'alert';
+    spinner.classList.add('visible');
+    btnText.textContent = 'Creando...';
+    btn.disabled = true;
+
+    // Build the YAML content — universal: works for any repo name and any zip
+    const yamlContent = `name: Build APK
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Install Gradle 8.7
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q gradle-8.7-bin.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-8.7/bin" >> $GITHUB_PATH
+      - name: Unzip project
+        run: unzip ${zipName} -d project
+      - name: Apply custom icon (if present)
+        run: |
+          set +e
+          ICON_SRC=""
+          [ -f app_icon.png ] && ICON_SRC="app_icon.png"
+          [ -f app_icon.svg ] && ICON_SRC="app_icon.svg"
+          if [ -n "$ICON_SRC" ]; then
+            for DPI in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+              DEST="project/${projectFolder}/app/src/main/res/mipmap-$DPI"
+              mkdir -p "$DEST"
+              cp "$ICON_SRC" "$DEST/ic_launcher.png" 2>/dev/null || true
+              cp "$ICON_SRC" "$DEST/ic_launcher_round.png" 2>/dev/null || true
+            done
+            echo "Custom icon applied from $ICON_SRC"
+          else
+            echo "No custom icon found, skipping"
+          fi
+          set -e
+      - name: Create fallback icons (if missing)
+        run: |
+          python3 -c "
+          import os, struct, zlib
+          def make_png(size):
+              def chunk(name, data):
+                  c = zlib.crc32(name + data) & 0xffffffff
+                  return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)
+              raw = b''
+              for y in range(size):
+                  raw += b'\\x00'
+                  for x in range(size):
+                      raw += b'\\x4c\\xaf\\x50\\xff'
+              compressed = zlib.compress(raw)
+              return (b'\\x89PNG\\r\\n\\x1a\\n' +
+                      chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0)) +
+                      chunk(b'IDAT', compressed) +
+                      chunk(b'IEND', b''))
+          for dpi in ['mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi']:
+              path = f'project/${projectFolder}/app/src/main/res/mipmap-{dpi}'
+              os.makedirs(path, exist_ok=True)
+              for name in ['ic_launcher.png', 'ic_launcher_round.png']:
+                  dest = f'{path}/{name}'
+                  if not os.path.exists(dest):
+                      open(dest, 'wb').write(make_png(48))
+                      print(f'Created fallback: {dest}')
+          print('Icons ready')
+          "
+      - name: Build APK
+        run: |
+          cd project/${projectFolder}
+          gradle assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: project/${projectFolder}/app/build/outputs/apk/debug/app-debug.apk
+`;
+
+    try {
+      const branch = selectedRepo.default_branch || 'main';
+      const filePath = '.github/workflows/build.yml';
+      const b64 = btoa(unescape(encodeURIComponent(yamlContent)));
+
+      // Check if file already exists (to get SHA for update)
+      let sha = undefined;
+      try {
+        const existing = await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent(filePath) + '?ref=' + branch);
+        if (existing && existing.sha) sha = existing.sha;
+      } catch(e) {}
+
+      const body = {
+        message: sha ? 'Update build.yml via GitDeploy' : 'Add .github/workflows/build.yml via GitDeploy',
+        content: b64,
+        branch
+      };
+      if (sha) body.sha = sha;
+
+      const res = await ghPut('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent(filePath), body);
+      if (res.content || res.commit) {
+        alertEl.className = 'alert success visible';
+        alertEl.textContent = sha
+          ? '✓ build.yml actualizado en .github/workflows/'
+          : '✓ build.yml creado en .github/workflows/ — ya puedes compilar el APK';
+        btnText.textContent = '✓ build.yml listo';
+      } else {
+        throw new Error(res.message || 'Error al crear el archivo');
+      }
+    } catch(e) {
+      alertEl.className = 'alert error visible';
+      alertEl.textContent = '✗ ' + e.message;
+      btnText.textContent = '📄 Crear .github/workflows/build.yml';
+    }
+
+    spinner.classList.remove('visible');
     btn.disabled = false;
   }
 
