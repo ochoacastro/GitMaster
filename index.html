@@ -2780,13 +2780,29 @@
       }
       btnText.textContent = 'Disparando build...';
       const branch = selectedRepo.default_branch || 'main';
-      const res = await fetch('https://api.github.com/repos/' + selectedRepo.full_name + '/actions/workflows/build.yml/dispatches', {
-        method: 'POST',
-        headers: { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ref: branch })
-      });
+
+      // GitHub tarda unos segundos en indexar un workflow recien subido.
+      // Reintentamos hasta 5 veces con 3s de espera si recibimos 422.
+      let res, attempts422 = 0;
+      while (true) {
+        res = await fetch('https://api.github.com/repos/' + selectedRepo.full_name + '/actions/workflows/build.yml/dispatches', {
+          method: 'POST',
+          headers: { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ref: branch })
+        });
+        if (res.status === 422 && attempts422 < 5) {
+          attempts422++;
+          alertEl.className = 'alert info visible';
+          alertEl.textContent = 'GitHub esta indexando el workflow... espera (' + attempts422 + '/5)';
+          btnText.textContent = 'Esperando (' + attempts422 + '/5)...';
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+        break;
+      }
+
       if (res.status === 404) throw new Error('No se encontro el workflow build.yml en .github/workflows/');
-      if (res.status === 422) throw new Error('El workflow necesita "workflow_dispatch" en el trigger. Agrega: on: [push, workflow_dispatch]');
+      if (res.status === 422) throw new Error('GitHub no pudo indexar el workflow. Espera 1 minuto y vuelve a intentar compilar.');
       if (!res.ok) throw new Error('Error ' + res.status + ' al disparar el workflow.');
       alertEl.className = 'alert success visible';
       alertEl.textContent = 'Build iniciado. Monitoreando estado...';
@@ -2985,10 +3001,15 @@
 
       const res = await ghPut('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent(filePath), body);
       if (res.content || res.commit) {
+        // Aviso mientras GitHub indexa el workflow (suele tardar 5-15s)
+        alertEl.className = 'alert info visible';
+        alertEl.textContent = '✓ build.yml creado. Esperando que GitHub lo active (15s)...';
+        btnText.textContent = '⏳ Activando...';
+        await new Promise(r => setTimeout(r, 15000));
         alertEl.className = 'alert success visible';
         alertEl.textContent = sha
-          ? '✓ build.yml actualizado en .github/workflows/'
-          : '✓ build.yml creado en .github/workflows/ — ya puedes compilar el APK';
+          ? '✓ build.yml actualizado — listo para compilar'
+          : '✓ build.yml creado y activo — ya puedes compilar el APK';
         btnText.textContent = '✓ build.yml listo';
       } else if (res.message && (res.message.toLowerCase().includes('not found') || res.message.toLowerCase().includes('resource not accessible'))) {
         alertEl.className = 'alert error visible';
