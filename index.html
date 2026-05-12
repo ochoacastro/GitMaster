@@ -798,18 +798,32 @@
       <!-- Pages live monitor -->
       <div id="pagesMonitorCard" style="display:none;margin-top:14px">
         <div class="pages-monitor-bar">
+
+          <!-- Header: dot + título + cronómetro -->
           <div class="pages-monitor-header">
             <span class="pages-monitor-dot" id="pagesMonitorDot"></span>
-            <span id="pagesMonitorTitle">🌐 Monitoreando GitHub Pages...</span>
+            <span id="pagesMonitorTitle" style="flex:1">🌐 Monitoreando GitHub Pages...</span>
             <span id="pagesMonitorTimer" class="pages-monitor-time">0s</span>
           </div>
+
+          <!-- Barra de progreso -->
           <div class="pages-monitor-track">
             <div class="pages-monitor-fill" id="pagesMonitorFill"></div>
           </div>
+
+          <!-- Pasos del despliegue -->
+          <div id="pagesStepsList" style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px"></div>
+
+          <!-- Mensaje de estado -->
           <div id="pagesMonitorMsg" class="pages-monitor-msg">Esperando que GitHub publique los cambios...</div>
-          <div id="pagesMonitorUrl" style="display:none;margin-top:8px">
-            <a id="pagesMonitorLink" href="#" target="_blank" class="pages-monitor-link"></a>
+
+          <!-- URL al publicarse -->
+          <div id="pagesMonitorUrl" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.2);border-radius:8px">
+            <div style="font-size:9px;letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-bottom:5px">🌐 Sitio publicado</div>
+            <a id="pagesMonitorLink" href="#" target="_blank" class="pages-monitor-link" style="font-size:12px;word-break:break-all"></a>
           </div>
+
+          <!-- Botón detener / cerrar -->
           <button id="pagesMonitorStopBtn" class="btn btn-ghost" onclick="stopPagesMonitor()" style="width:100%;margin-top:10px;font-size:10px">Detener monitoreo</button>
         </div>
       </div>
@@ -879,13 +893,38 @@
         <span id="apkSpinner" class="spinner"></span>
         <span id="apkBtnText">▶ Compilar APK ahora</span>
       </button>
-      <div id="apkStatusArea" style="display:none;margin-top:12px">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Estado del workflow:</div>
-        <div id="apkStatusBadge" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:6px 12px;border-radius:20px;border:1px solid var(--border)"></div>
-        <div id="apkRunLink" style="margin-top:8px;display:none">
-          <a id="apkRunUrl" href="#" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none">→ Ver en GitHub Actions</a>
+
+      <!-- ── Monitor de build ── -->
+      <div id="apkStatusArea" style="display:none;margin-top:14px">
+        <!-- Header con estado global y cronómetro -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div id="apkMonitorDot" style="width:10px;height:10px;border-radius:50%;background:var(--accent3);box-shadow:0 0 8px var(--accent3);flex-shrink:0;animation:monitorPulse 1.2s ease-in-out infinite"></div>
+          <div id="apkStatusBadge" style="font-size:12px;font-weight:600;flex:1">Iniciando build...</div>
+          <div id="apkElapsed" style="font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--accent3);letter-spacing:-0.5px;min-width:42px;text-align:right">0s</div>
         </div>
-        <button id="apkDownloadBtn" onclick="downloadApk()" style="display:none;width:100%;margin-top:10px" class="btn btn-primary">
+        <!-- Barra de progreso -->
+        <div style="height:3px;background:var(--border);border-radius:2px;margin-bottom:14px;overflow:hidden">
+          <div id="apkProgressFill" style="height:100%;width:0%;border-radius:2px;background:linear-gradient(90deg,#7c3aed,var(--accent));transition:width 0.8s ease"></div>
+        </div>
+        <!-- Pasos del pipeline -->
+        <div id="apkStepsList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+          <!-- pasos inyectados dinámicamente -->
+        </div>
+        <!-- Logs en vivo -->
+        <div id="apkLogsWrap" style="display:none;margin-bottom:10px">
+          <div style="font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+            <span>Logs en vivo</span>
+            <span style="flex:1;height:1px;background:var(--border);display:block"></span>
+            <span id="apkLogsToggle" onclick="toggleApkLogs()" style="cursor:pointer;color:var(--accent);font-size:9px">ocultar ▲</span>
+          </div>
+          <div id="apkLogsBox" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;max-height:160px;overflow-y:auto;font-size:10px;line-height:1.7;color:var(--muted);font-family:'JetBrains Mono',monospace"></div>
+        </div>
+        <!-- Link a GitHub Actions -->
+        <div id="apkRunLink" style="display:none;margin-bottom:10px">
+          <a id="apkRunUrl" href="#" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none;display:flex;align-items:center;gap:4px">↗ Ver run completo en GitHub Actions</a>
+        </div>
+        <!-- Botón descargar -->
+        <button id="apkDownloadBtn" onclick="downloadApk()" style="display:none;width:100%" class="btn btn-primary">
           <span id="apkDownloadSpinner" class="spinner"></span>
           <span id="apkDownloadBtnText">⬇ Descargar APK</span>
         </button>
@@ -1696,8 +1735,39 @@
   let _monitorStart = null;
   let _monitorMaxSeconds = 300; // 5 min timeout
 
+  const PAGES_STEPS = [
+    { key: 'push',    label: 'Archivos subidos al repo',       icon: '📤' },
+    { key: 'queue',   label: 'GitHub Pages en cola',            icon: '⏳' },
+    { key: 'build',   label: 'Construyendo el sitio',           icon: '🔨' },
+    { key: 'deploy',  label: 'Desplegando en CDN',              icon: '🚀' },
+    { key: 'live',    label: 'Sitio publicado y accesible',     icon: '🌐' },
+  ];
+
+  function renderPagesSteps(activeIndex, doneCount, failed) {
+    const list = document.getElementById('pagesStepsList');
+    if (!list) return;
+    list.innerHTML = '';
+    PAGES_STEPS.forEach((s, i) => {
+      let statusIcon = '○', color = 'var(--muted)', bg = 'transparent', border = 'var(--border)';
+      if (failed && i === activeIndex) {
+        statusIcon = '✗'; color = 'var(--danger)'; bg = 'rgba(239,68,68,0.06)'; border = 'rgba(239,68,68,0.25)';
+      } else if (i < doneCount) {
+        statusIcon = '✓'; color = 'var(--accent)'; bg = 'rgba(0,255,136,0.04)'; border = 'rgba(0,255,136,0.15)';
+      } else if (i === activeIndex && !failed) {
+        statusIcon = '▶'; color = '#f59e0b'; bg = 'rgba(245,158,11,0.06)'; border = 'rgba(245,158,11,0.25)';
+      }
+      const div = document.createElement('div');
+      div.style.cssText = `display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;border:1px solid ${border};background:${bg};transition:all 0.3s`;
+      div.innerHTML = `
+        <span style="font-size:13px;flex-shrink:0">${s.icon}</span>
+        <span style="font-size:11px;flex:1;color:${i <= activeIndex || i < doneCount ? 'var(--text)' : 'var(--muted)'}">${s.label}</span>
+        <span style="font-size:11px;font-weight:700;color:${color};font-family:'Syne',sans-serif">${statusIcon}</span>
+      `;
+      list.appendChild(div);
+    });
+  }
+
   async function startPagesMonitor() {
-    // Get Pages URL from GitHub API
     let pagesUrl = '';
     try {
       const r = await fetch(`https://api.github.com/repos/${selectedRepo.full_name}/pages`, {
@@ -1709,10 +1779,9 @@
       }
     } catch(e) {}
 
-    if (!pagesUrl) return; // No Pages configured, skip monitor
+    if (!pagesUrl) return;
     document.getElementById('apkCard').style.display = 'none';
 
-    // Get a fingerprint of the current deploy (latest commit sha)
     let commitSha = '';
     try {
       const branch = selectedRepo.default_branch || 'main';
@@ -1720,28 +1789,31 @@
       commitSha = ref.object ? ref.object.sha.substring(0, 7) : '';
     } catch(e) {}
 
-    // Show monitor card
+    // Reset monitor UI
     const card = document.getElementById('pagesMonitorCard');
     card.style.display = 'block';
     document.getElementById('pagesMonitorDot').className = 'pages-monitor-dot';
     document.getElementById('pagesMonitorTitle').textContent = '🌐 Monitoreando GitHub Pages...';
     document.getElementById('pagesMonitorTimer').className = 'pages-monitor-time';
     document.getElementById('pagesMonitorTimer').textContent = '0s';
-    document.getElementById('pagesMonitorFill').style.width = '0%';
+    document.getElementById('pagesMonitorFill').style.width = '5%';
     document.getElementById('pagesMonitorMsg').className = 'pages-monitor-msg';
-    document.getElementById('pagesMonitorMsg').textContent = 'Esperando que GitHub publique los cambios...';
+    document.getElementById('pagesMonitorMsg').textContent = 'Archivos recibidos — GitHub está procesando el despliegue...';
     document.getElementById('pagesMonitorUrl').style.display = 'none';
-    document.getElementById('pagesMonitorStopBtn').style.display = 'block';
+    document.getElementById('pagesMonitorStopBtn').textContent = 'Detener monitoreo';
+    document.getElementById('pagesMonitorStopBtn').onclick = () => stopPagesMonitor();
+
+    // Paso 0 ya completado (archivos subidos), paso 1 activo
+    renderPagesSteps(1, 1, false);
 
     _monitorStart = Date.now();
 
-    // We fetch the page and look for a change — cache-busting with timestamp
-    // Strategy: fetch the page, compare ETag or content hash across polls
     let lastEtag = '';
     let lastContent = '';
     let detected = false;
+    let currentStep = 1; // empieza en "en cola"
 
-    // Initial fetch to get baseline
+    // Baseline fetch
     try {
       const init = await fetch(pagesUrl + '?_=' + Date.now(), { cache: 'no-store' });
       lastEtag = init.headers.get('etag') || '';
@@ -1750,19 +1822,29 @@
 
     _monitorInterval = setInterval(async () => {
       const elapsed = Math.floor((Date.now() - _monitorStart) / 1000);
-      const progress = Math.min((elapsed / _monitorMaxSeconds) * 100, 98);
+      const timerText = elapsed >= 60 ? `${Math.floor(elapsed/60)}m ${elapsed%60}s` : `${elapsed}s`;
+      document.getElementById('pagesMonitorTimer').textContent = timerText;
 
-      // Update timer and progress bar
-      document.getElementById('pagesMonitorTimer').textContent = elapsed >= 60
-        ? `${Math.floor(elapsed/60)}m ${elapsed%60}s`
-        : `${elapsed}s`;
-      document.getElementById('pagesMonitorFill').style.width = progress + '%';
+      // Avanzar pasos simulados según tiempo transcurrido
+      if (!detected) {
+        if (elapsed < 20)       { currentStep = 1; }   // en cola
+        else if (elapsed < 60)  { currentStep = 2; }   // construyendo
+        else if (elapsed < 120) { currentStep = 3; }   // desplegando
+        else                    { currentStep = 3; }
+        const progress = Math.min(5 + (elapsed / _monitorMaxSeconds) * 88, 92);
+        document.getElementById('pagesMonitorFill').style.width = progress + '%';
+        renderPagesSteps(currentStep, currentStep, false);
+        const dots = '.'.repeat((elapsed % 3) + 1);
+        document.getElementById('pagesMonitorMsg').textContent =
+          PAGES_STEPS[currentStep].label + dots + '  (' + timerText + ')';
+      }
 
       // Timeout
       if (elapsed >= _monitorMaxSeconds) {
-        stopPagesMonitor();
+        stopPagesMonitor(false);
         document.getElementById('pagesMonitorMsg').textContent = '⏱ Tiempo de espera agotado (5 min). Verifica manualmente.';
         document.getElementById('pagesMonitorDot').className = 'pages-monitor-dot error';
+        renderPagesSteps(currentStep, currentStep, true);
         return;
       }
 
@@ -1771,39 +1853,41 @@
         const res = await fetch(pagesUrl + '?_=' + Date.now(), { cache: 'no-store' });
         const newEtag = res.headers.get('etag') || '';
         const newContent = await res.text();
-
         const changed = (newEtag && newEtag !== lastEtag) ||
                         (newContent && newContent !== lastContent);
 
         if (changed && !detected) {
           detected = true;
-          stopPagesMonitor(false); // stop interval but keep card visible
+          stopPagesMonitor(false);
           document.getElementById('pagesMonitorFill').style.width = '100%';
           document.getElementById('pagesMonitorDot').className = 'pages-monitor-dot live';
-          document.getElementById('pagesMonitorTitle').textContent = '✓ ¡Cambios publicados!';
+          document.getElementById('pagesMonitorTitle').textContent = '✓ ¡Sitio publicado!';
           document.getElementById('pagesMonitorTimer').className = 'pages-monitor-time live';
           document.getElementById('pagesMonitorMsg').className = 'pages-monitor-msg live';
           document.getElementById('pagesMonitorMsg').textContent =
-            `Actualización detectada en ${elapsed >= 60 ? Math.floor(elapsed/60)+'m '+elapsed%60+'s' : elapsed+'s'} · GitHub Pages está live.`;
+            `Cambios detectados en ${timerText} — GitHub Pages está live.`;
+          renderPagesSteps(-1, PAGES_STEPS.length, false);
           const urlEl = document.getElementById('pagesMonitorUrl');
           urlEl.style.display = 'block';
           const link = document.getElementById('pagesMonitorLink');
           link.href = pagesUrl;
-          link.textContent = `🌐 ${pagesUrl} ↗`;
+          link.textContent = `↗ ${pagesUrl}`;
           document.getElementById('pagesMonitorStopBtn').textContent = 'Cerrar';
-        } else {
-          // Still waiting — update status message
-          const dots = '.'.repeat((elapsed % 3) + 1);
-          document.getElementById('pagesMonitorMsg').textContent =
-            `Esperando cambios${dots} (GitHub suele tardar entre 30s y 3 min)`;
+          document.getElementById('pagesMonitorStopBtn').onclick = () => stopPagesMonitor();
+          // Notificación del navegador
+          if (window.Notification && Notification.permission === 'granted') {
+            new Notification('GitDeploy — Sitio publicado ✓', {
+              body: `GitHub Pages actualizado en ${timerText}\n${pagesUrl}`
+            });
+          }
+        } else if (!detected) {
           lastEtag = newEtag || lastEtag;
           lastContent = newContent || lastContent;
         }
       } catch(e) {
-        // Fetch error — keep trying
-        document.getElementById('pagesMonitorMsg').textContent = `⚠ Sin respuesta del servidor, reintentando... (${elapsed}s)`;
+        document.getElementById('pagesMonitorMsg').textContent = `⚠ Sin respuesta, reintentando... (${timerText})`;
       }
-    }, 5000); // poll every 5 seconds
+    }, 5000);
   }
 
   function stopPagesMonitor(hide = true) {
@@ -2838,46 +2922,10 @@
       if (res.status === 404) throw new Error('No se encontro el workflow build.yml en .github/workflows/');
       if (res.status === 422) throw new Error('GitHub no pudo indexar el workflow. Espera 1 minuto y vuelve a intentar compilar.');
       if (!res.ok) throw new Error('Error ' + res.status + ' al disparar el workflow.');
+
       alertEl.className = 'alert success visible';
       alertEl.textContent = 'Build iniciado. Monitoreando estado...';
-      document.getElementById('apkStatusArea').style.display = 'block';
-      btnText.textContent = 'Build en progreso...';
-      if (_apkPollInterval) clearInterval(_apkPollInterval);
-      let attempts = 0;
-      _apkPollInterval = setInterval(async () => {
-        attempts++;
-        if (attempts > 40) { clearInterval(_apkPollInterval); return; }
-        try {
-          const runs = await ghGet('/repos/' + selectedRepo.full_name + '/actions/workflows/build.yml/runs?per_page=1');
-          const run = runs.workflow_runs && runs.workflow_runs[0];
-          if (!run) return;
-          const badge = document.getElementById('apkStatusBadge');
-          const status = run.status, conclusion = run.conclusion;
-          let label = '', color = '', bg = '';
-          if (status === 'completed') {
-            clearInterval(_apkPollInterval);
-            btn.disabled = false; btnText.textContent = 'Compilar APK ahora'; spinner.classList.remove('visible');
-            if (conclusion === 'success') {
-              label = 'Completado exitosamente'; color = 'var(--accent)'; bg = 'rgba(0,255,136,0.08)';
-              alertEl.className = 'alert success visible';
-              alertEl.textContent = 'APK compilado correctamente.';
-              window._lastApkRunId = run.id;
-              document.getElementById('apkDownloadBtn').style.display = 'block';
-            } else {
-              label = 'Fallo (' + conclusion + ')'; color = 'var(--danger)'; bg = 'rgba(239,68,68,0.08)';
-              alertEl.className = 'alert error visible';
-              alertEl.textContent = 'El build fallo. Revisa los logs en GitHub Actions.';
-            }
-          } else if (status === 'in_progress') {
-            label = 'Compilando...'; color = '#f59e0b'; bg = 'rgba(245,158,11,0.08)';
-          } else {
-            label = 'En cola...'; color = 'var(--muted)'; bg = 'rgba(100,116,139,0.08)';
-          }
-          badge.textContent = label; badge.style.color = color; badge.style.background = bg; badge.style.borderColor = color;
-          const linkEl = document.getElementById('apkRunLink'), urlEl = document.getElementById('apkRunUrl');
-          if (run.html_url) { linkEl.style.display = 'block'; urlEl.href = run.html_url; }
-        } catch(e) {}
-      }, 5000);
+      startApkMonitor();
     } catch(e) {
       alertEl.className = 'alert error visible'; alertEl.textContent = e.message;
       btn.disabled = false; btnText.textContent = 'Compilar APK ahora'; spinner.classList.remove('visible');
@@ -3087,6 +3135,238 @@
 
     spinner.classList.remove('visible');
     btn.disabled = false;
+  }
+
+  // ─── APK Build Monitor ────────────────────────────────────────────────────
+  let _apkElapsedSec = 0;
+  let _apkElapsedInterval = null;
+  let _apkLogsVisible = true;
+  let _apkCurrentRunId = null;
+
+  // Pipeline steps definition (matches GitHub Actions steps order)
+  const APK_STEPS = [
+    { key: 'checkout',   label: 'Checkout del repositorio',   icon: '📥' },
+    { key: 'java',       label: 'Configurar Java 17',          icon: '☕' },
+    { key: 'gradle',     label: 'Instalar Gradle 8.7',         icon: '🐘' },
+    { key: 'unzip',      label: 'Descomprimir proyecto',       icon: '📦' },
+    { key: 'icon',       label: 'Aplicar ícono personalizado', icon: '🎨' },
+    { key: 'fallback',   label: 'Crear íconos fallback',       icon: '🖼' },
+    { key: 'build',      label: 'Compilar APK (gradle)',       icon: '🔨' },
+    { key: 'upload',     label: 'Subir artefacto APK',         icon: '☁️' },
+  ];
+
+  function renderApkSteps(activeIndex, successCount, failed) {
+    const list = document.getElementById('apkStepsList');
+    list.innerHTML = '';
+    APK_STEPS.forEach((s, i) => {
+      let icon = s.icon, statusColor = 'var(--muted)', bg = 'transparent', border = 'var(--border)';
+      let statusIcon = '○';
+      if (failed && i === activeIndex) {
+        statusIcon = '✗'; statusColor = 'var(--danger)'; bg = 'rgba(239,68,68,0.06)'; border = 'rgba(239,68,68,0.25)';
+      } else if (i < successCount) {
+        statusIcon = '✓'; statusColor = 'var(--accent)'; bg = 'rgba(0,255,136,0.04)'; border = 'rgba(0,255,136,0.15)';
+      } else if (i === activeIndex && !failed) {
+        statusIcon = '▶'; statusColor = '#f59e0b'; bg = 'rgba(245,158,11,0.06)'; border = 'rgba(245,158,11,0.25)';
+      }
+      const div = document.createElement('div');
+      div.style.cssText = `display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;border:1px solid ${border};background:${bg};transition:all 0.3s`;
+      div.innerHTML = `
+        <span style="font-size:14px;flex-shrink:0">${icon}</span>
+        <span style="font-size:11px;flex:1;color:${i <= activeIndex || i < successCount ? 'var(--text)' : 'var(--muted)'}">${s.label}</span>
+        <span style="font-size:11px;font-weight:700;color:${statusColor};font-family:'Syne',sans-serif">${statusIcon}</span>
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  function guessStepFromJobSteps(jobSteps) {
+    // jobSteps: array from GitHub API jobs/{id}/steps
+    if (!jobSteps || !jobSteps.length) return { active: 0, done: 0, failed: false };
+    const nameMap = [
+      ['checkout'],
+      ['setup-java','java'],
+      ['gradle'],
+      ['unzip'],
+      ['icon'],
+      ['fallback'],
+      ['build apk','assembledebug','gradle assemble'],
+      ['upload-artifact','upload artifact'],
+    ];
+    let lastCompleted = -1, activeIdx = -1, failed = false;
+    jobSteps.forEach(step => {
+      const n = (step.name || '').toLowerCase();
+      nameMap.forEach((keys, i) => {
+        if (keys.some(k => n.includes(k))) {
+          if (step.conclusion === 'success') lastCompleted = Math.max(lastCompleted, i);
+          if (step.status === 'in_progress') activeIdx = i;
+          if (step.conclusion === 'failure') { activeIdx = i; failed = true; }
+        }
+      });
+    });
+    if (activeIdx === -1) activeIdx = lastCompleted + 1;
+    return { active: activeIdx, done: lastCompleted + 1, failed };
+  }
+
+  function appendApkLog(line, color) {
+    const box = document.getElementById('apkLogsBox');
+    const div = document.createElement('div');
+    div.style.color = color || 'var(--muted)';
+    div.textContent = line;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+    document.getElementById('apkLogsWrap').style.display = 'block';
+  }
+
+  function toggleApkLogs() {
+    _apkLogsVisible = !_apkLogsVisible;
+    document.getElementById('apkLogsBox').style.display = _apkLogsVisible ? 'block' : 'none';
+    document.getElementById('apkLogsToggle').textContent = _apkLogsVisible ? 'ocultar ▲' : 'mostrar ▼';
+  }
+
+  function setApkMonitorDot(state) {
+    // state: 'running' | 'success' | 'error' | 'queue'
+    const dot = document.getElementById('apkMonitorDot');
+    const elapsed = document.getElementById('apkElapsed');
+    const colors = { running:'#f59e0b', success:'var(--accent)', error:'var(--danger)', queue:'var(--muted)' };
+    const glows  = { running:'#f59e0b', success:'#00ff88', error:'#ef4444', queue:'#64748b' };
+    dot.style.background = colors[state] || colors.queue;
+    dot.style.boxShadow = `0 0 8px ${glows[state] || glows.queue}`;
+    dot.style.animation = (state === 'success' || state === 'error') ? 'none' : 'monitorPulse 1.2s ease-in-out infinite';
+    if (state === 'success') { elapsed.style.color = 'var(--accent)'; }
+    if (state === 'error') { elapsed.style.color = 'var(--danger)'; }
+  }
+
+  async function startApkMonitor() {
+    const alertEl = document.getElementById('apkAlert');
+    const btn = document.getElementById('apkBuildBtn');
+    const spinner = document.getElementById('apkSpinner');
+    const btnText = document.getElementById('apkBtnText');
+
+    // Reset UI
+    document.getElementById('apkStatusArea').style.display = 'block';
+    document.getElementById('apkDownloadBtn').style.display = 'none';
+    document.getElementById('apkRunLink').style.display = 'none';
+    document.getElementById('apkLogsWrap').style.display = 'none';
+    document.getElementById('apkLogsBox').innerHTML = '';
+    document.getElementById('apkProgressFill').style.width = '5%';
+    document.getElementById('apkStatusBadge').textContent = 'En cola...';
+    btnText.textContent = 'Build en progreso...';
+    btn.disabled = true;
+    setApkMonitorDot('queue');
+    renderApkSteps(-1, 0, false);
+
+    // Cronómetro
+    _apkElapsedSec = 0;
+    if (_apkElapsedInterval) clearInterval(_apkElapsedInterval);
+    _apkElapsedInterval = setInterval(() => {
+      _apkElapsedSec++;
+      const m = Math.floor(_apkElapsedSec / 60), s = _apkElapsedSec % 60;
+      document.getElementById('apkElapsed').textContent = m > 0 ? `${m}m${s}s` : `${s}s`;
+    }, 1000);
+
+    appendApkLog('► Workflow disparado. Esperando que GitHub lo ponga en cola...', 'var(--accent3)');
+
+    if (_apkPollInterval) clearInterval(_apkPollInterval);
+    let attempts = 0;
+    let lastLogCount = 0;
+    _apkCurrentRunId = null;
+
+    _apkPollInterval = setInterval(async () => {
+      attempts++;
+      if (attempts > 80) {
+        clearInterval(_apkPollInterval);
+        clearInterval(_apkElapsedInterval);
+        appendApkLog('✗ Timeout: el build tardó más de lo esperado.', 'var(--danger)');
+        setApkMonitorDot('error');
+        btn.disabled = false; btnText.textContent = 'Compilar APK ahora'; spinner.classList.remove('visible');
+        return;
+      }
+
+      try {
+        const runs = await ghGet('/repos/' + selectedRepo.full_name + '/actions/workflows/build.yml/runs?per_page=1');
+        const run = runs.workflow_runs && runs.workflow_runs[0];
+        if (!run) return;
+
+        // Guardar run id y mostrar link
+        if (!_apkCurrentRunId || _apkCurrentRunId !== run.id) {
+          _apkCurrentRunId = run.id;
+          window._lastApkRunId = run.id;
+          const linkEl = document.getElementById('apkRunLink');
+          const urlEl = document.getElementById('apkRunUrl');
+          if (run.html_url) { linkEl.style.display = 'block'; urlEl.href = run.html_url; }
+        }
+
+        const status = run.status, conclusion = run.conclusion;
+
+        // Obtener detalle de pasos del job
+        let stepInfo = { active: 0, done: 0, failed: false };
+        try {
+          const jobs = await ghGet('/repos/' + selectedRepo.full_name + '/actions/runs/' + run.id + '/jobs');
+          const job = jobs.jobs && jobs.jobs[0];
+          if (job && job.steps) {
+            stepInfo = guessStepFromJobSteps(job.steps);
+
+            // Log de pasos nuevos completados
+            job.steps.forEach((step, si) => {
+              if (step.status === 'completed' && si >= lastLogCount) {
+                const ok = step.conclusion === 'success';
+                const icon = ok ? '✓' : '✗';
+                const color = ok ? 'var(--accent)' : 'var(--danger)';
+                appendApkLog(icon + ' ' + step.name, color);
+                lastLogCount = si + 1;
+              }
+            });
+
+            // Paso activo en el log
+            const active = job.steps.find(s => s.status === 'in_progress');
+            if (active) appendApkLog('▶ ' + active.name + '...', '#f59e0b');
+          }
+        } catch(e) {}
+
+        // Actualizar pasos y barra
+        renderApkSteps(stepInfo.active, stepInfo.done, stepInfo.failed);
+        const pct = Math.min(5 + Math.round((stepInfo.done / APK_STEPS.length) * 90), 95);
+        document.getElementById('apkProgressFill').style.width = pct + '%';
+
+        if (status === 'in_progress') {
+          document.getElementById('apkStatusBadge').textContent = 'Compilando... (' + APK_STEPS[Math.min(stepInfo.active, APK_STEPS.length-1)].label + ')';
+          setApkMonitorDot('running');
+        } else if (status === 'queued' || status === 'waiting') {
+          document.getElementById('apkStatusBadge').textContent = 'En cola — esperando runner...';
+          setApkMonitorDot('queue');
+        }
+
+        if (status === 'completed') {
+          clearInterval(_apkPollInterval);
+          clearInterval(_apkElapsedInterval);
+          btn.disabled = false; btnText.textContent = 'Compilar APK ahora'; spinner.classList.remove('visible');
+          document.getElementById('apkProgressFill').style.width = '100%';
+
+          if (conclusion === 'success') {
+            renderApkSteps(-1, APK_STEPS.length, false);
+            document.getElementById('apkStatusBadge').textContent = '✓ APK compilado correctamente';
+            setApkMonitorDot('success');
+            alertEl.className = 'alert success visible';
+            alertEl.textContent = '✓ APK listo. Haz clic en "Descargar APK" para obtenerlo.';
+            appendApkLog('✓ Build completado exitosamente en ' + document.getElementById('apkElapsed').textContent, 'var(--accent)');
+            document.getElementById('apkDownloadBtn').style.display = 'block';
+            // Notificación del navegador
+            if (window.Notification && Notification.permission === 'granted') {
+              new Notification('GitDeploy — APK Listo ✓', { body: 'Tu APK fue compilado en ' + document.getElementById('apkElapsed').textContent });
+            }
+          } else {
+            renderApkSteps(stepInfo.active, stepInfo.done, true);
+            document.getElementById('apkStatusBadge').textContent = '✗ Build fallido (' + (conclusion || 'error') + ')';
+            setApkMonitorDot('error');
+            alertEl.className = 'alert error visible';
+            alertEl.innerHTML = '✗ El build falló. <a href="' + (run.html_url || '#') + '" target="_blank" style="color:var(--accent)">Ver logs completos →</a>';
+            appendApkLog('✗ Build fallido. Revisa los logs en GitHub Actions.', 'var(--danger)');
+          }
+        }
+      } catch(e) {
+        appendApkLog('⚠ Error consultando estado: ' + e.message, 'var(--muted)');
+      }
+    }, 4000);
   }
 
   // Enter key on token input
