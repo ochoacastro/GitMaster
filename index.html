@@ -1107,6 +1107,10 @@
         showSection('repo');
         renderUserBar();
         loadRepos();
+        // Pedir permiso de notificaciones para avisar cuando el workflow este listo
+        if (window.Notification && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
       } else {
         showAlert('loginAlert', 'error', res.message || 'Token inválido. Verifica los permisos.');
       }
@@ -3001,16 +3005,35 @@
 
       const res = await ghPut('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent(filePath), body);
       if (res.content || res.commit) {
-        // Aviso mientras GitHub indexa el workflow (suele tardar 5-15s)
+        // Polling: verificar cada 4s si GitHub ya indexó el workflow (max 20 intentos = ~80s)
         alertEl.className = 'alert info visible';
-        alertEl.textContent = '✓ build.yml creado. Esperando que GitHub lo active (15s)...';
-        btnText.textContent = '⏳ Activando...';
-        await new Promise(r => setTimeout(r, 15000));
-        alertEl.className = 'alert success visible';
-        alertEl.textContent = sha
-          ? '✓ build.yml actualizado — listo para compilar'
-          : '✓ build.yml creado y activo — ya puedes compilar el APK';
-        btnText.textContent = '✓ build.yml listo';
+        alertEl.textContent = '⏳ Verificando que GitHub active el workflow...';
+        btnText.textContent = '⏳ Verificando...';
+        btn.disabled = true;
+
+        let ready = false;
+        for (let i = 1; i <= 20; i++) {
+          await new Promise(r => setTimeout(r, 4000));
+          alertEl.textContent = '⏳ Verificando activación... (' + i + '/20, ~' + (i * 4) + 's)';
+          try {
+            const wf = await ghGet('/repos/' + selectedRepo.full_name + '/actions/workflows/build.yml');
+            if (wf && wf.state === 'active') { ready = true; break; }
+          } catch(e) {}
+        }
+
+        if (ready) {
+          alertEl.className = 'alert success visible';
+          alertEl.textContent = '✅ Workflow activo — ya puedes compilar el APK';
+          btnText.textContent = '✓ build.yml listo';
+          // Notificación del navegador si tiene permiso
+          if (window.Notification && Notification.permission === 'granted') {
+            new Notification('GitDeploy', { body: 'Workflow listo — ya puedes compilar el APK', icon: '' });
+          }
+        } else {
+          alertEl.className = 'alert error visible';
+          alertEl.textContent = '⚠️ GitHub tarda más de lo normal. Intenta compilar en 1-2 minutos.';
+          btnText.textContent = '✓ build.yml listo';
+        }
       } else if (res.message && (res.message.toLowerCase().includes('not found') || res.message.toLowerCase().includes('resource not accessible'))) {
         alertEl.className = 'alert error visible';
         alertEl.innerHTML = '✗ Tu token no tiene permiso <strong style="color:#fca5a5">workflow</strong>.<br><br>' +
