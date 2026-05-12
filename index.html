@@ -867,10 +867,6 @@
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">
           Si aún no tienes <code style="color:var(--accent)">.github/workflows/build.yml</code>, créalo aquí. El .zip del proyecto se detecta automáticamente del repositorio.
         </div>
-        <div class="field" style="margin-bottom:8px">
-          <label style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">Archivo ZIP del proyecto (auto-detectado)</label>
-          <input type="text" id="buildZipName" class="input" placeholder="Buscando .zip..." style="font-size:12px">
-        </div>
         <div id="buildYmlAlert" class="alert" style="margin-bottom:8px"></div>
         <button class="btn btn-ghost" id="createBuildYmlBtn" onclick="createBuildYml()" style="width:100%;border-color:var(--accent2);color:var(--accent2)">
           <span id="buildYmlSpinner" class="spinner"></span>
@@ -1242,6 +1238,14 @@
     preview.textContent = `🌐 ${user.login}.github.io/${name}/`;
   }
 
+  // Encoder Base64 robusto -- maneja $, backticks, comillas, caracteres especiales en YAML
+  function toBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    bytes.forEach(b => bin += String.fromCharCode(b));
+    return btoa(bin);
+  }
+
   async function createRepo() {
     const name = document.getElementById('newRepoName').value.trim();
     if (!name) return showAlert('repoAlert', 'error', 'El nombre del repositorio es requerido.');
@@ -1293,15 +1297,22 @@
           setLoading('createBtnText', 'createSpinner', 'createBtnText', true, 'Creando build.yml...');
         try {
           const buildYml = `name: Build APK\non: [push, workflow_dispatch]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-java@v4\n        with:\n          java-version: '17'\n          distribution: 'temurin'\n      - name: Install Gradle 8.7\n        run: |\n          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip\n          unzip -q gradle-8.7-bin.zip -d /opt/gradle\n          echo "/opt/gradle/gradle-8.7/bin" >> $GITHUB_PATH\n      - name: Unzip project\n        run: |\n          ZIP=$(ls *.zip | head -1)\n          FOLDER=$(unzip -Z1 "$ZIP" | head -1 | cut -d/ -f1)\n          unzip "$ZIP" -d project\n          echo "PROJECT_DIR=project/$FOLDER" >> $GITHUB_ENV\n      - name: Create missing icons\n        run: |\n          python3 -c "\nimport os, struct, zlib\ndef make_png(size):\n    def chunk(name, data):\n        c = zlib.crc32(name + data) & 0xffffffff\n        return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)\n    raw = b''\n    for y in range(size):\n        raw += b'\\x00'\n        for x in range(size):\n            raw += b'\\x4c\\xaf\\x50\\xff'\n    compressed = zlib.compress(raw)\n    return (b'\\x89PNG\\r\\n\\x1a\\n' +\n            chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0)) +\n            chunk(b'IDAT', compressed) +\n            chunk(b'IEND', b''))\nfor dpi in ['mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi']:\n    path = f'project/' + os.environ.get('PROJECT_DIR','project').split('/')[1] + f'/app/src/main/res/mipmap-{dpi}'\n    os.makedirs(path, exist_ok=True)\n    png = make_png(48)\n    open(f'{path}/ic_launcher.png','wb').write(png)\n    open(f'{path}/ic_launcher_round.png','wb').write(png)\nprint('Icons created')\n"\n      - name: Build APK\n        run: |\n          if [ -f gradle.properties ]; then\n            cp gradle.properties $PROJECT_DIR/gradle.properties\n          fi\n          echo "android.useAndroidX=true" >> $PROJECT_DIR/gradle.properties\n          echo "android.enableJetifier=true" >> $PROJECT_DIR/gradle.properties\n          cd $PROJECT_DIR\n          gradle assembleDebug\n      - uses: actions/upload-artifact@v4\n        with:\n          name: app-debug\n          path: \${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk\n`;
-          const b64 = btoa(unescape(encodeURIComponent(buildYml)));
+          const b64 = toBase64(buildYml);
           const branch = repo.default_branch || 'main';
-          await ghPut(`/repos/${repo.full_name}/contents/.github/workflows/build.yml`, {
+          const putRes = await ghPut(`/repos/${repo.full_name}/contents/.github/workflows/build.yml`, {
             message: 'Add GitHub Actions workflow to build APK',
             content: b64,
             branch
           });
+          if (!putRes.content && !putRes.commit) {
+            if (putRes.message && (putRes.message.toLowerCase().includes('not found') || putRes.message.toLowerCase().includes('resource not accessible'))) {
+              showAlert('repoAlert', 'error', 'Repositorio creado, pero el token no tiene permiso "workflow". Ve a github.com/settings/tokens y activa el scope "workflow".');
+            } else {
+              showAlert('repoAlert', 'error', 'Repositorio creado, pero no se pudo crear build.yml: ' + (putRes.message || 'error desconocido'));
+            }
+          }
         } catch(we) {
-          console.warn('build.yml upload failed:', we.message);
+          showAlert('repoAlert', 'error', 'Repositorio creado, pero fallo build.yml: ' + we.message);
         }
         } // end enableApk
 
@@ -1328,36 +1339,20 @@
     // Show repo name in banner (solo nombre, sin usuario)
     const bannerName = document.getElementById('repoBannerName');
     if (bannerName) bannerName.textContent = selectedRepo.name || selectedRepo.full_name.split('/')[1];
-    // Auto-detectar .zip del repo para el campo buildZipName
+    // Verificar si build.yml ya existe en el repo
     autoDetectRepoZip();
   }
 
   async function autoDetectRepoZip() {
     if (!selectedRepo) return;
-    const input = document.getElementById('buildZipName');
-    if (!input) return;
-    input.value = '';
-    input.placeholder = 'Buscando .zip en el repo...';
     try {
       const branch = selectedRepo.default_branch || 'main';
-      const items = await ghGet('/repos/' + selectedRepo.full_name + '/contents?ref=' + branch);
-      if (Array.isArray(items)) {
-        const zip = items.find(f => f.type === 'file' && f.name.toLowerCase().endsWith('.zip'));
-        if (zip) {
-          input.value = zip.name;
-          input.placeholder = 'MiProyecto.zip';
-          try {
-            await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent('.github/workflows/build.yml') + '?ref=' + branch);
-            document.getElementById('buildYmlAlert').className = 'alert success visible';
-            document.getElementById('buildYmlAlert').textContent = 'build.yml ya existe en este repositorio';
-            document.getElementById('buildYmlBtnText').textContent = 'Actualizar build.yml';
-          } catch(e) {}
-        } else {
-          input.placeholder = 'MiProyecto.zip (no se encontro ningun .zip)';
-        }
-      }
+      await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent('.github/workflows/build.yml') + '?ref=' + branch);
+      document.getElementById('buildYmlAlert').className = 'alert success visible';
+      document.getElementById('buildYmlAlert').textContent = 'build.yml ya existe en este repositorio';
+      document.getElementById('buildYmlBtnText').textContent = 'Actualizar build.yml';
     } catch(e) {
-      input.placeholder = 'MiProyecto.zip';
+      // no existe aun, boton queda como "Crear"
     }
   }
 
@@ -1711,6 +1706,7 @@
     } catch(e) {}
 
     if (!pagesUrl) return; // No Pages configured, skip monitor
+    document.getElementById('apkCard').style.display = 'none';
 
     // Get a fingerprint of the current deploy (latest commit sha)
     let commitSha = '';
@@ -1808,6 +1804,7 @@
 
   function stopPagesMonitor(hide = true) {
     if (_monitorInterval) { clearInterval(_monitorInterval); _monitorInterval = null; }
+    document.getElementById('apkCard').style.display = 'block';
     if (hide) {
       document.getElementById('pagesMonitorCard').style.display = 'none';
     } else {
@@ -2882,107 +2879,95 @@
   // ─── Crear build.yml ──────────────────────────────────────────────────────
   async function createBuildYml() {
     if (!selectedRepo) return;
-    const zipNameRaw = document.getElementById('buildZipName').value.trim();
     const alertEl = document.getElementById('buildYmlAlert');
     const btn = document.getElementById('createBuildYmlBtn');
     const spinner = document.getElementById('buildYmlSpinner');
     const btnText = document.getElementById('buildYmlBtnText');
-
-    if (!zipNameRaw) {
-      alertEl.className = 'alert error visible';
-      alertEl.textContent = '✗ Escribe el nombre del archivo .zip del proyecto (ej: MiApp.zip)';
-      return;
-    }
-    const zipName = zipNameRaw.endsWith('.zip') ? zipNameRaw : zipNameRaw + '.zip';
-    // Derive inner folder name (remove .zip)
-    const projectFolder = zipName.replace(/\.zip$/i, '');
 
     alertEl.className = 'alert';
     spinner.classList.add('visible');
     btnText.textContent = 'Creando...';
     btn.disabled = true;
 
-    // Build the YAML content — universal: works for any repo name and any zip
-    const yamlContent = `name: Build APK
-on:
-  push:
-  workflow_dispatch:
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Install Gradle 8.7
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
-          unzip -q gradle-8.7-bin.zip -d /opt/gradle
-          echo "/opt/gradle/gradle-8.7/bin" >> $GITHUB_PATH
-      - name: Unzip project
-        run: unzip ${zipName} -d project
-      - name: Apply custom icon (if present)
-        run: |
-          set +e
-          ICON_SRC=""
-          [ -f app_icon.png ] && ICON_SRC="app_icon.png"
-          [ -f app_icon.svg ] && ICON_SRC="app_icon.svg"
-          if [ -n "$ICON_SRC" ]; then
-            for DPI in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-              DEST="project/${projectFolder}/app/src/main/res/mipmap-$DPI"
-              mkdir -p "$DEST"
-              cp "$ICON_SRC" "$DEST/ic_launcher.png" 2>/dev/null || true
-              cp "$ICON_SRC" "$DEST/ic_launcher_round.png" 2>/dev/null || true
-            done
-            echo "Custom icon applied from $ICON_SRC"
-          else
-            echo "No custom icon found, skipping"
-          fi
-          set -e
-      - name: Create fallback icons (if missing)
-        run: |
-          python3 -c "
-          import os, struct, zlib
-          def make_png(size):
-              def chunk(name, data):
-                  c = zlib.crc32(name + data) & 0xffffffff
-                  return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)
-              raw = b''
-              for y in range(size):
-                  raw += b'\\x00'
-                  for x in range(size):
-                      raw += b'\\x4c\\xaf\\x50\\xff'
-              compressed = zlib.compress(raw)
-              return (b'\\x89PNG\\r\\n\\x1a\\n' +
-                      chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0)) +
-                      chunk(b'IDAT', compressed) +
-                      chunk(b'IEND', b''))
-          for dpi in ['mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi']:
-              path = f'project/${projectFolder}/app/src/main/res/mipmap-{dpi}'
-              os.makedirs(path, exist_ok=True)
-              for name in ['ic_launcher.png', 'ic_launcher_round.png']:
-                  dest = f'{path}/{name}'
-                  if not os.path.exists(dest):
-                      open(dest, 'wb').write(make_png(48))
-                      print(f'Created fallback: {dest}')
-          print('Icons ready')
-          "
-      - name: Build APK
-        run: |
-          cd project/${projectFolder}
-          gradle assembleDebug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: project/${projectFolder}/app/build/outputs/apk/debug/app-debug.apk
-`;
+    // YAML universal: detecta el .zip y carpeta del proyecto en runtime con shell
+    const yamlContent = "name: Build APK\n" +
+"on: [push, workflow_dispatch]\n" +
+"jobs:\n" +
+"  build:\n" +
+"    runs-on: ubuntu-latest\n" +
+"    steps:\n" +
+"      - uses: actions/checkout@v4\n" +
+"      - uses: actions/setup-java@v4\n" +
+"        with:\n" +
+"          java-version: '17'\n" +
+"          distribution: 'temurin'\n" +
+"      - name: Install Gradle 8.7\n" +
+"        run: |\n" +
+"          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip\n" +
+"          unzip -q gradle-8.7-bin.zip -d /opt/gradle\n" +
+'          echo "/opt/gradle/gradle-8.7/bin" >> $GITHUB_PATH\n' +
+"      - name: Unzip project\n" +
+"        run: |\n" +
+'          ZIP=$(ls *.zip | head -1)\n' +
+'          FOLDER=$(unzip -Z1 "$ZIP" | head -1 | cut -d/ -f1)\n' +
+'          unzip "$ZIP" -d project\n' +
+'          echo "PROJECT_DIR=project/$FOLDER" >> $GITHUB_ENV\n' +
+"      - name: Apply custom icon\n" +
+"        run: |\n" +
+"          set +e\n" +
+"          ICON_SRC=''\n" +
+"          [ -f app_icon.png ] && ICON_SRC='app_icon.png'\n" +
+"          [ -f app_icon.svg ] && ICON_SRC='app_icon.svg'\n" +
+'          if [ -n "$ICON_SRC" ]; then\n' +
+"            for DPI in mdpi hdpi xhdpi xxhdpi xxxhdpi; do\n" +
+'              DEST="$PROJECT_DIR/app/src/main/res/mipmap-$DPI"\n' +
+'              mkdir -p "$DEST"\n' +
+'              cp "$ICON_SRC" "$DEST/ic_launcher.png" 2>/dev/null || true\n' +
+'              cp "$ICON_SRC" "$DEST/ic_launcher_round.png" 2>/dev/null || true\n' +
+"            done\n" +
+"          fi\n" +
+"          set -e\n" +
+"      - name: Create fallback icons\n" +
+"        run: |\n" +
+"          python3 -c \"\n" +
+"import os, struct, zlib\n" +
+"def make_png(size):\n" +
+"    def chunk(name, data):\n" +
+"        c = zlib.crc32(name + data) & 0xffffffff\n" +
+"        return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)\n" +
+"    raw = b''\n" +
+"    for y in range(size):\n" +
+"        raw += b'\\\\x00'\n" +
+"        for x in range(size):\n" +
+"            raw += b'\\\\x4c\\\\xaf\\\\x50\\\\xff'\n" +
+"    compressed = zlib.compress(raw)\n" +
+"    return (b'\\\\x89PNG\\\\r\\\\n\\\\x1a\\\\n' +\n" +
+"            chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0)) +\n" +
+"            chunk(b'IDAT', compressed) +\n" +
+"            chunk(b'IEND', b''))\n" +
+"for dpi in ['mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi']:\n" +
+"    pdir = os.environ.get('PROJECT_DIR','project/app')\n" +
+"    path = pdir + '/app/src/main/res/mipmap-' + dpi\n" +
+"    os.makedirs(path, exist_ok=True)\n" +
+"    for nm in ['ic_launcher.png','ic_launcher_round.png']:\n" +
+"        dest = path + '/' + nm\n" +
+"        if not os.path.exists(dest):\n" +
+"            open(dest,'wb').write(make_png(48))\n" +
+"print('Icons ready')\n" +
+"          \"\n" +
+"      - name: Build APK\n" +
+"        run: |\n" +
+'          cd $PROJECT_DIR\n' +
+"          gradle assembleDebug\n" +
+"      - uses: actions/upload-artifact@v4\n" +
+"        with:\n" +
+"          name: app-debug\n" +
+'          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk\n';
 
     try {
       const branch = selectedRepo.default_branch || 'main';
       const filePath = '.github/workflows/build.yml';
-      const b64 = btoa(unescape(encodeURIComponent(yamlContent)));
+      const b64 = toBase64(yamlContent);
 
       // Check if file already exists (to get SHA for update)
       let sha = undefined;
