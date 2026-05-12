@@ -2772,15 +2772,45 @@
           r.readAsDataURL(iconFile);
         });
         const branch = selectedRepo.default_branch || 'main';
-        const iconPath = iconFile.type === 'image/svg+xml' ? 'app_icon.svg' : 'app_icon.png';
+        const iconExt = iconFile.type === 'image/svg+xml' ? 'svg' : 'png';
+        const iconPath = 'app_icon.' + iconExt;
+
+        // ── Borrar el ícono anterior del tipo opuesto para evitar conflictos ──
+        const oppositeExt = iconExt === 'svg' ? 'png' : 'svg';
+        const oppositePath = 'app_icon.' + oppositeExt;
+        try {
+          const oldIcon = await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + oppositePath + '?ref=' + branch);
+          if (oldIcon && oldIcon.sha) {
+            await fetch('https://api.github.com/repos/' + selectedRepo.full_name + '/contents/' + oppositePath, {
+              method: 'DELETE',
+              headers: { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: 'Remove old icon (' + oppositePath + ') via GitDeploy', sha: oldIcon.sha, branch })
+            });
+          }
+        } catch(e) { /* no existía el anterior, ok */ }
+
+        // ── Subir el nuevo ícono con nombre correcto ──
         let sha = undefined;
         try {
           const existing = await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + iconPath + '?ref=' + branch);
           if (existing && existing.sha) sha = existing.sha;
         } catch(e) {}
-        const body = { message: 'Upload app icon via GitDeploy', content: iconB64, branch };
+        const body = { message: 'Upload app icon (' + iconPath + ') via GitDeploy', content: iconB64, branch };
         if (sha) body.sha = sha;
         await ghPut('/repos/' + selectedRepo.full_name + '/contents/' + iconPath, body);
+
+        // ── Actualizar build.yml para que siempre use el ícono correcto ──
+        btnText.textContent = 'Actualizando build.yml...';
+        const yamlContent = buildYmlContent(); // genera el YAML con la ruta correcta
+        const ymlPath = '.github/workflows/build.yml';
+        let ymlSha = undefined;
+        try {
+          const existingYml = await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent(ymlPath) + '?ref=' + branch);
+          if (existingYml && existingYml.sha) ymlSha = existingYml.sha;
+        } catch(e) {}
+        const ymlBody = { message: 'Update build.yml: set icon to ' + iconPath + ' via GitDeploy', content: toBase64(yamlContent), branch };
+        if (ymlSha) ymlBody.sha = ymlSha;
+        await ghPut('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent(ymlPath), ymlBody);
       }
       btnText.textContent = 'Disparando build...';
       const branch = selectedRepo.default_branch || 'main';
@@ -2896,21 +2926,11 @@
     btn.disabled = false;
   }
 
-  // ─── Crear build.yml ──────────────────────────────────────────────────────
-  async function createBuildYml() {
-    if (!selectedRepo) return;
-    const alertEl = document.getElementById('buildYmlAlert');
-    const btn = document.getElementById('createBuildYmlBtn');
-    const spinner = document.getElementById('buildYmlSpinner');
-    const btnText = document.getElementById('buildYmlBtnText');
-
-    alertEl.className = 'alert';
-    spinner.classList.add('visible');
-    btnText.textContent = 'Creando...';
-    btn.disabled = true;
-
-    // YAML universal: detecta el .zip y carpeta del proyecto en runtime con shell
-    const yamlContent = "name: Build APK\n" +
+  // ─── Genera el contenido del build.yml con la ruta del ícono correcta ──────
+  function buildYmlContent() {
+    const iconExt = (iconFile && iconFile.type === 'image/svg+xml') ? 'svg' : 'png';
+    const iconName = 'app_icon.' + iconExt;
+    return "name: Build APK\n" +
 "on: [push, workflow_dispatch]\n" +
 "jobs:\n" +
 "  build:\n" +
@@ -2936,8 +2956,7 @@
 "        run: |\n" +
 "          set +e\n" +
 "          ICON_SRC=''\n" +
-"          [ -f app_icon.png ] && ICON_SRC='app_icon.png'\n" +
-"          [ -f app_icon.svg ] && ICON_SRC='app_icon.svg'\n" +
+"          [ -f " + iconName + " ] && ICON_SRC='" + iconName + "'\n" +
 '          if [ -n "$ICON_SRC" ]; then\n' +
 "            for DPI in mdpi hdpi xhdpi xxhdpi xxxhdpi; do\n" +
 '              DEST="$PROJECT_DIR/app/src/main/res/mipmap-$DPI"\n' +
@@ -2983,6 +3002,23 @@
 "        with:\n" +
 "          name: app-debug\n" +
 '          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk\n';
+  }
+
+  // ─── Crear build.yml ──────────────────────────────────────────────────────
+  async function createBuildYml() {
+    if (!selectedRepo) return;
+    const alertEl = document.getElementById('buildYmlAlert');
+    const btn = document.getElementById('createBuildYmlBtn');
+    const spinner = document.getElementById('buildYmlSpinner');
+    const btnText = document.getElementById('buildYmlBtnText');
+
+    alertEl.className = 'alert';
+    spinner.classList.add('visible');
+    btnText.textContent = 'Creando...';
+    btn.disabled = true;
+
+    // Usa buildYmlContent() para generar el YAML con el nombre de ícono correcto
+    const yamlContent = buildYmlContent();
 
     try {
       const branch = selectedRepo.default_branch || 'main';
