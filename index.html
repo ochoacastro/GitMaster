@@ -685,6 +685,12 @@
               Activar GitHub Pages
             </label>
           </div>
+          <div class="field">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="newRepoApk" style="accent-color:#7c3aed">
+              📦 Incluir workflow para compilar APK Android
+            </label>
+          </div>
           <div id="pagesOptions" style="margin-top:8px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
             <div class="field" style="margin-bottom:10px">
               <label>Rama fuente</label>
@@ -815,6 +821,64 @@
     </div>
 
     <button class="btn btn-ghost" onclick="goToRepos()" style="width:100%;margin-top:8px">← Cambiar repositorio</button>
+
+    <!-- ── APK Builder ── -->
+    <div class="card" style="margin-top:14px" id="apkCard">
+      <div class="card-label">// Compilar APK Android</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+        Dispara el workflow <strong style="color:var(--text)">Build APK</strong> de GitHub Actions en este repositorio. Asegúrate de tener el archivo <code style="color:var(--accent)">.github/workflows/build.yml</code> configurado.
+      </div>
+
+      <!-- Icon uploader (optional) -->
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">
+        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--accent3);margin-bottom:8px">🎨 Ícono de la app (opcional)</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          Requisitos del ícono:
+          <ul style="margin:6px 0 0 16px;line-height:1.8">
+            <li>Formato: <strong style="color:var(--text)">PNG</strong></li>
+            <li>Tamaño: <strong style="color:var(--text)">512×512 px</strong> (mínimo 192×192 px)</li>
+            <li>Fondo: preferiblemente sin transparencia para compatibilidad</li>
+            <li>Peso máximo: <strong style="color:var(--text)">1 MB</strong></li>
+          </ul>
+        </div>
+        <div id="iconDropZone" style="border:2px dashed var(--border);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:all 0.2s" onclick="document.getElementById('iconFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleIconDrop(event)">
+          <input type="file" id="iconFileInput" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handleIconSelect(this.files[0])">
+          <div style="font-size:28px;margin-bottom:6px">🖼️</div>
+          <div style="font-size:12px;color:var(--muted)"><strong style="color:var(--accent)">Toca para seleccionar</strong> o arrastra la imagen</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">PNG · JPG · WEBP</div>
+        </div>
+        <div id="iconPreviewArea" style="display:none;margin-top:10px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <img id="iconPreviewImg" src="" style="width:56px;height:56px;border-radius:10px;border:1px solid var(--border);object-fit:cover">
+            <div style="flex:1">
+              <div id="iconFileName" style="font-size:12px;font-weight:600"></div>
+              <div id="iconFileMeta" style="font-size:10px;color:var(--muted);margin-top:2px"></div>
+              <div id="iconValidation" style="font-size:11px;margin-top:4px"></div>
+            </div>
+            <button onclick="clearIcon()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="apkAlert" class="alert"></div>
+      <button class="btn btn-primary" id="apkBuildBtn" onclick="triggerApkBuild()" style="background:linear-gradient(135deg,#7c3aed,#4f46e5)">
+        <span id="apkSpinner" class="spinner"></span>
+        <span id="apkBtnText">▶ Compilar APK ahora</span>
+      </button>
+      <div id="apkStatusArea" style="display:none;margin-top:12px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Estado del workflow:</div>
+        <div id="apkStatusBadge" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:6px 12px;border-radius:20px;border:1px solid var(--border)"></div>
+        <div id="apkRunLink" style="margin-top:8px;display:none">
+          <a id="apkRunUrl" href="#" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none">→ Ver en GitHub Actions</a>
+        </div>
+        <button id="apkDownloadBtn" onclick="downloadApk()" style="display:none;width:100%;margin-top:10px" class="btn btn-primary">
+          <span id="apkDownloadSpinner" class="spinner"></span>
+          <span id="apkDownloadBtnText">⬇ Descargar APK</span>
+        </button>
+        <div id="apkDownloadAlert" class="alert" style="margin-top:8px"></div>
+      </div>
+    </div>
+
     <button class="btn btn-ghost" onclick="openExplorer()" style="width:100%;margin-top:8px">🗂 Explorar archivos del repositorio</button>
     <button class="btn btn-ghost" onclick="downloadRepoZip()" style="width:100%;margin-top:8px">⬇ Descargar repositorio completo (.zip)</button>
   </div>
@@ -1166,6 +1230,7 @@
     const priv = document.getElementById('newRepoPrivate').checked;
     const desc = document.getElementById('newRepoDesc').value.trim();
     const enablePages = document.getElementById('newRepoPages').checked;
+    const enableApk = document.getElementById('newRepoApk').checked;
     const pagesBranch = document.getElementById('pagesBranch').value;
     const pagesFolder = document.getElementById('pagesFolder').value;
 
@@ -1197,13 +1262,30 @@
               headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
               body: JSON.stringify({ source: { branch: pagesBranch, path: pagesFolder } })
             });
-            showAlert('repoAlert', 'success', `✓ Repositorio creado y GitHub Pages activado · ${user.login}.github.io/${name}/`);
+            showAlert('repoAlert', 'success', `✓ Repositorio creado, Pages activado${enableApk ? ' y build.yml listo' : ''} · ${user.login}.github.io/${name}/`);
           } catch(pe) {
-            showAlert('repoAlert', 'info', `✓ Repositorio creado. Pages no pudo activarse: ${pe.message}`);
+            showAlert('repoAlert', 'info', `✓ Repositorio creado${enableApk ? ' con build.yml' : ''}. Pages no pudo activarse: ${pe.message}`);
           }
         } else {
-          showAlert('repoAlert', 'success', `✓ Repositorio "${repo.name}" creado exitosamente.`);
+          showAlert('repoAlert', 'success', `✓ Repositorio "${repo.name}" creado${enableApk ? ' con build.yml listo. Solo sube tu ZIP y compila' : ' exitosamente'}.`);
         }
+
+        // Upload build.yml automatically only if APK option is checked
+        if (enableApk) {
+          setLoading('createBtnText', 'createSpinner', 'createBtnText', true, 'Creando build.yml...');
+        try {
+          const buildYml = `name: Build APK\non: [push, workflow_dispatch]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-java@v4\n        with:\n          java-version: '17'\n          distribution: 'temurin'\n      - name: Install Gradle 8.7\n        run: |\n          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip\n          unzip -q gradle-8.7-bin.zip -d /opt/gradle\n          echo "/opt/gradle/gradle-8.7/bin" >> $GITHUB_PATH\n      - name: Unzip project\n        run: |\n          ZIP=$(ls *.zip | head -1)\n          FOLDER=$(unzip -Z1 "$ZIP" | head -1 | cut -d/ -f1)\n          unzip "$ZIP" -d project\n          echo "PROJECT_DIR=project/$FOLDER" >> $GITHUB_ENV\n      - name: Create missing icons\n        run: |\n          python3 -c "\nimport os, struct, zlib\ndef make_png(size):\n    def chunk(name, data):\n        c = zlib.crc32(name + data) & 0xffffffff\n        return struct.pack('>I', len(data)) + name + data + struct.pack('>I', c)\n    raw = b''\n    for y in range(size):\n        raw += b'\\x00'\n        for x in range(size):\n            raw += b'\\x4c\\xaf\\x50\\xff'\n    compressed = zlib.compress(raw)\n    return (b'\\x89PNG\\r\\n\\x1a\\n' +\n            chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0)) +\n            chunk(b'IDAT', compressed) +\n            chunk(b'IEND', b''))\nfor dpi in ['mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi']:\n    path = f'project/' + os.environ.get('PROJECT_DIR','project').split('/')[1] + f'/app/src/main/res/mipmap-{dpi}'\n    os.makedirs(path, exist_ok=True)\n    png = make_png(48)\n    open(f'{path}/ic_launcher.png','wb').write(png)\n    open(f'{path}/ic_launcher_round.png','wb').write(png)\nprint('Icons created')\n"\n      - name: Build APK\n        run: |\n          if [ -f gradle.properties ]; then\n            cp gradle.properties $PROJECT_DIR/gradle.properties\n          fi\n          echo "android.useAndroidX=true" >> $PROJECT_DIR/gradle.properties\n          echo "android.enableJetifier=true" >> $PROJECT_DIR/gradle.properties\n          cd $PROJECT_DIR\n          gradle assembleDebug\n      - uses: actions/upload-artifact@v4\n        with:\n          name: app-debug\n          path: \${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk\n`;
+          const b64 = btoa(unescape(encodeURIComponent(buildYml)));
+          const branch = repo.default_branch || 'main';
+          await ghPut(`/repos/${repo.full_name}/contents/.github/workflows/build.yml`, {
+            message: 'Add GitHub Actions workflow to build APK',
+            content: b64,
+            branch
+          });
+        } catch(we) {
+          console.warn('build.yml upload failed:', we.message);
+        }
+        } // end enableApk
 
         document.getElementById('newRepoForm').style.display = 'none';
         await loadRepos();
@@ -2535,6 +2617,199 @@
     }
 
     zipBtns.forEach(b => { b.disabled = false; b.style.opacity = ''; });
+  }
+
+  // ─── APK Builder ─────────────────────────────────────────────────────────
+  let iconFile = null;
+  let _apkPollInterval = null;
+
+  function handleIconDrop(e) {
+    e.preventDefault();
+    document.getElementById('iconDropZone').style.borderColor = 'var(--border)';
+    const f = e.dataTransfer.files[0];
+    if (f) handleIconSelect(f);
+  }
+
+  function handleIconSelect(f) {
+    if (!f) return;
+    const validTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    const alertEl = document.getElementById('apkAlert');
+    if (!validTypes.includes(f.type)) {
+      alertEl.className = 'alert error visible';
+      alertEl.textContent = 'Formato no valido. El icono debe ser PNG, JPG o WEBP.';
+      return;
+    }
+    if (f.size > 1024 * 1024) {
+      alertEl.className = 'alert error visible';
+      alertEl.textContent = 'El archivo es mayor a 1 MB. Reduce el tamano de la imagen.';
+      return;
+    }
+    alertEl.className = 'alert';
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        let validationMsg = '', validationColor = 'var(--accent)';
+        if (w < 192 || h < 192) {
+          validationMsg = 'Tamano ' + w + 'x' + h + 'px: muy pequeno (minimo 192x192)';
+          validationColor = 'var(--danger)'; iconFile = null;
+        } else if (w !== h) {
+          validationMsg = 'Advertencia: ' + w + 'x' + h + 'px, debe ser cuadrada';
+          validationColor = '#f59e0b'; iconFile = null;
+        } else if (w >= 512) {
+          validationMsg = 'Perfecto: ' + w + 'x' + h + 'px';
+          iconFile = f;
+        } else {
+          validationMsg = 'Aceptable: ' + w + 'x' + h + 'px (512x512 recomendado)';
+          iconFile = f;
+        }
+        document.getElementById('iconPreviewImg').src = e.target.result;
+        document.getElementById('iconFileName').textContent = f.name;
+        document.getElementById('iconFileMeta').textContent = (f.size/1024).toFixed(1) + ' KB - ' + f.type.split('/')[1].toUpperCase();
+        document.getElementById('iconValidation').textContent = validationMsg;
+        document.getElementById('iconValidation').style.color = validationColor;
+        document.getElementById('iconPreviewArea').style.display = 'block';
+        document.getElementById('iconDropZone').style.display = 'none';
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(f);
+  }
+
+  function clearIcon() {
+    iconFile = null;
+    document.getElementById('iconPreviewArea').style.display = 'none';
+    document.getElementById('iconDropZone').style.display = 'block';
+    document.getElementById('iconFileInput').value = '';
+  }
+
+  async function triggerApkBuild() {
+    if (!selectedRepo) return;
+    const alertEl = document.getElementById('apkAlert');
+    const btn = document.getElementById('apkBuildBtn');
+    const spinner = document.getElementById('apkSpinner');
+    const btnText = document.getElementById('apkBtnText');
+    alertEl.className = 'alert';
+    spinner.classList.add('visible');
+    btnText.textContent = 'Iniciando...';
+    btn.disabled = true;
+    try {
+      if (iconFile) {
+        btnText.textContent = 'Subiendo icono...';
+        const iconB64 = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = e => res(e.target.result.split(',')[1]);
+          r.onerror = () => rej(new Error('Error leyendo icono'));
+          r.readAsDataURL(iconFile);
+        });
+        const branch = selectedRepo.default_branch || 'main';
+        const iconPath = 'app_icon.png';
+        let sha = undefined;
+        try {
+          const existing = await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + iconPath + '?ref=' + branch);
+          if (existing && existing.sha) sha = existing.sha;
+        } catch(e) {}
+        const body = { message: 'Upload app icon via GitDeploy', content: iconB64, branch };
+        if (sha) body.sha = sha;
+        await ghPut('/repos/' + selectedRepo.full_name + '/contents/' + iconPath, body);
+      }
+      btnText.textContent = 'Disparando build...';
+      const branch = selectedRepo.default_branch || 'main';
+      const res = await fetch('https://api.github.com/repos/' + selectedRepo.full_name + '/actions/workflows/build.yml/dispatches', {
+        method: 'POST',
+        headers: { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref: branch })
+      });
+      if (res.status === 404) throw new Error('No se encontro el workflow build.yml en .github/workflows/');
+      if (res.status === 422) throw new Error('El workflow necesita "workflow_dispatch" en el trigger. Agrega: on: [push, workflow_dispatch]');
+      if (!res.ok) throw new Error('Error ' + res.status + ' al disparar el workflow.');
+      alertEl.className = 'alert success visible';
+      alertEl.textContent = 'Build iniciado. Monitoreando estado...';
+      document.getElementById('apkStatusArea').style.display = 'block';
+      btnText.textContent = 'Build en progreso...';
+      if (_apkPollInterval) clearInterval(_apkPollInterval);
+      let attempts = 0;
+      _apkPollInterval = setInterval(async () => {
+        attempts++;
+        if (attempts > 40) { clearInterval(_apkPollInterval); return; }
+        try {
+          const runs = await ghGet('/repos/' + selectedRepo.full_name + '/actions/workflows/build.yml/runs?per_page=1');
+          const run = runs.workflow_runs && runs.workflow_runs[0];
+          if (!run) return;
+          const badge = document.getElementById('apkStatusBadge');
+          const status = run.status, conclusion = run.conclusion;
+          let label = '', color = '', bg = '';
+          if (status === 'completed') {
+            clearInterval(_apkPollInterval);
+            btn.disabled = false; btnText.textContent = 'Compilar APK ahora'; spinner.classList.remove('visible');
+            if (conclusion === 'success') {
+              label = 'Completado exitosamente'; color = 'var(--accent)'; bg = 'rgba(0,255,136,0.08)';
+              alertEl.className = 'alert success visible';
+              alertEl.textContent = 'APK compilado correctamente.';
+              window._lastApkRunId = run.id;
+              document.getElementById('apkDownloadBtn').style.display = 'block';
+            } else {
+              label = 'Fallo (' + conclusion + ')'; color = 'var(--danger)'; bg = 'rgba(239,68,68,0.08)';
+              alertEl.className = 'alert error visible';
+              alertEl.textContent = 'El build fallo. Revisa los logs en GitHub Actions.';
+            }
+          } else if (status === 'in_progress') {
+            label = 'Compilando...'; color = '#f59e0b'; bg = 'rgba(245,158,11,0.08)';
+          } else {
+            label = 'En cola...'; color = 'var(--muted)'; bg = 'rgba(100,116,139,0.08)';
+          }
+          badge.textContent = label; badge.style.color = color; badge.style.background = bg; badge.style.borderColor = color;
+          const linkEl = document.getElementById('apkRunLink'), urlEl = document.getElementById('apkRunUrl');
+          if (run.html_url) { linkEl.style.display = 'block'; urlEl.href = run.html_url; }
+        } catch(e) {}
+      }, 5000);
+    } catch(e) {
+      alertEl.className = 'alert error visible'; alertEl.textContent = e.message;
+      btn.disabled = false; btnText.textContent = 'Compilar APK ahora'; spinner.classList.remove('visible');
+    }
+  }
+
+  // ─── Download APK ─────────────────────────────────────────────────
+  async function downloadApk() {
+    if (!selectedRepo || !window._lastApkRunId) return;
+    const btn = document.getElementById('apkDownloadBtn');
+    const spinner = document.getElementById('apkDownloadSpinner');
+    const btnText = document.getElementById('apkDownloadBtnText');
+    const alertEl = document.getElementById('apkDownloadAlert');
+    spinner.classList.add('visible');
+    btnText.textContent = 'Buscando APK...';
+    btn.disabled = true;
+    alertEl.className = 'alert';
+    try {
+      // Get artifacts list for the run
+      const data = await ghGet('/repos/' + selectedRepo.full_name + '/actions/runs/' + window._lastApkRunId + '/artifacts');
+      const artifact = data.artifacts && data.artifacts.find(a => a.name === 'app-debug');
+      if (!artifact) throw new Error('No se encontro el artifact app-debug. Verifica que el build termino correctamente.');
+      btnText.textContent = 'Descargando...';
+      // Download artifact zip
+      const res = await fetch('https://api.github.com/repos/' + selectedRepo.full_name + '/actions/artifacts/' + artifact.id + '/zip', {
+        headers: { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json' }
+      });
+      if (!res.ok) throw new Error('Error ' + res.status + ' al descargar el APK.');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (selectedRepo.name || 'app') + '-debug.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      alertEl.className = 'alert success visible';
+      alertEl.textContent = 'Descargado. Abre el ZIP y encontraras el app-debug.apk dentro.';
+    } catch(e) {
+      alertEl.className = 'alert error visible';
+      alertEl.textContent = e.message;
+    }
+    spinner.classList.remove('visible');
+    btnText.textContent = '⬇ Descargar APK';
+    btn.disabled = false;
   }
 
   // Enter key on token input
