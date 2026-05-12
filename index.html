@@ -577,6 +577,7 @@
   }
   .pages-monitor-link:hover { text-decoration: underline; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -2944,27 +2945,32 @@
     btn.disabled = true;
     alertEl.className = 'alert';
     try {
-      // Get artifacts list for the run
       const data = await ghGet('/repos/' + selectedRepo.full_name + '/actions/runs/' + window._lastApkRunId + '/artifacts');
       const artifact = data.artifacts && data.artifacts.find(a => a.name === 'app-debug');
       if (!artifact) throw new Error('No se encontro el artifact app-debug. Verifica que el build termino correctamente.');
       btnText.textContent = 'Descargando...';
-      // Download artifact zip
       const res = await fetch('https://api.github.com/repos/' + selectedRepo.full_name + '/actions/artifacts/' + artifact.id + '/zip', {
         headers: { Authorization: 'token ' + token, Accept: 'application/vnd.github.v3+json' }
       });
-      if (!res.ok) throw new Error('Error ' + res.status + ' al descargar el APK.');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      if (!res.ok) throw new Error('Error ' + res.status + ' al descargar.');
+      btnText.textContent = 'Extrayendo APK...';
+      const zipBlob = await res.blob();
+      const zip = await JSZip.loadAsync(zipBlob);
+      // Find the APK file inside the ZIP
+      const apkFile = Object.values(zip.files).find(f => f.name.endsWith('.apk'));
+      if (!apkFile) throw new Error('No se encontro el .apk dentro del artifact.');
+      const apkBlob = await apkFile.async('blob');
+      const apkName = (selectedRepo.name || 'app') + '.apk';
+      const url = URL.createObjectURL(new Blob([apkBlob], { type: 'application/vnd.android.package-archive' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = (selectedRepo.name || 'app') + '-debug.zip';
+      a.download = apkName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 5000);
       alertEl.className = 'alert success visible';
-      alertEl.textContent = 'Descargado. Abre el ZIP y encontraras el app-debug.apk dentro.';
+      alertEl.textContent = apkName + ' descargado correctamente.';
     } catch(e) {
       alertEl.className = 'alert error visible';
       alertEl.textContent = e.message;
