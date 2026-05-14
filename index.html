@@ -1427,18 +1427,9 @@
     // Show pages button only for public repos
     const pagesBtn = document.getElementById('pagesMgmtBtn');
     if (pagesBtn) pagesBtn.style.display = repo.private ? 'none' : 'flex';
-    // Hide APK card for repos that have GitHub Pages active
+    // Siempre mostrar el APK card al seleccionar un repo
     const apkCard = document.getElementById('apkCard');
-    if (apkCard) {
-      apkCard.style.display = 'block';
-      if (!repo.private) {
-        ghGet(`/repos/${repo.full_name}/pages`).then(() => {
-          apkCard.style.display = 'none';
-        }).catch(() => {
-          apkCard.style.display = 'block';
-        });
-      }
-    }
+    if (apkCard) apkCard.style.display = 'block';
   }
 
   function toggleNewRepo() {
@@ -1544,8 +1535,9 @@
           const d = JSON.parse(item.dataset.repo);
           if (d.full_name === repo.full_name) selectRepo(item, selectedRepo);
         });
-        // Si se activó APK, ir directo a la sección de upload y mostrar config APK
+        // Navegar automáticamente según el modo elegido
         if (enableApk) {
+          // Modo APK: ir a upload y resaltar card de compilación
           goToUpload();
           setTimeout(() => {
             const apkCard = document.getElementById('apkCard');
@@ -1555,6 +1547,9 @@
               apkCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
           }, 500);
+        } else if (enablePages) {
+          // Modo Pages: ir a upload directamente para empezar a subir archivos
+          goToUpload();
         }
       } else {
         showAlert('repoAlert', 'error', repo.message || 'No se pudo crear el repositorio.');
@@ -1969,9 +1964,19 @@
     if (fail === 0) showAlert('uploadAlert', 'success', `✓ ${ok} archivo(s) subido(s) correctamente.`);
     else showAlert('uploadAlert', 'error', `${ok} subido(s), ${fail} fallido(s). Revisa los errores.`);
 
-    // Start Pages monitor if repo is public and had successful uploads
-    if (ok > 0 && !selectedRepo.private) {
-      startPagesMonitor();
+    // Post-upload: scroll al APK card siempre, y arrancar Pages monitor solo si tiene Pages
+    if (ok > 0) {
+      const apkCard = document.getElementById('apkCard');
+      if (apkCard) {
+        apkCard.style.display = 'block';
+        setTimeout(() => {
+          apkCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+      }
+      // Solo arrancar monitor de Pages si el repo es público (lo verifica internamente)
+      if (!selectedRepo.private) {
+        startPagesMonitor();
+      }
     }
   }
 
@@ -2025,7 +2030,6 @@
     } catch(e) {}
 
     if (!pagesUrl) return;
-    document.getElementById('apkCard').style.display = 'none';
 
     let commitSha = '';
     try {
@@ -2137,19 +2141,9 @@
 
   function stopPagesMonitor(hide = true) {
     if (_monitorInterval) { clearInterval(_monitorInterval); _monitorInterval = null; }
-    // Only restore APK card if current repo does NOT have Pages active
+    // Siempre mostrar el APK card al detener el monitor
     const apkCard = document.getElementById('apkCard');
-    if (apkCard) {
-      if (selectedRepo && !selectedRepo.private) {
-        ghGet(`/repos/${selectedRepo.full_name}/pages`).then(() => {
-          apkCard.style.display = 'none';
-        }).catch(() => {
-          apkCard.style.display = 'block';
-        });
-      } else {
-        apkCard.style.display = 'block';
-      }
-    }
+    if (apkCard) apkCard.style.display = 'block';
     if (hide) {
       document.getElementById('pagesMonitorCard').style.display = 'none';
     } else {
