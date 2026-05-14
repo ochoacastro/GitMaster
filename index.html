@@ -908,6 +908,8 @@
     <!-- ── APK Builder ── -->
     <div class="card" style="margin-top:14px" id="apkCard">
       <div class="card-label">// Compilar APK Android</div>
+      <!-- Auto-detect banner (shown only when ZIP or build.yml detected) -->
+      <div id="apkAutoDetectAlert" style="display:none;background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.3);border-radius:8px;padding:10px 14px;font-size:11px;color:#c4b5fd;line-height:1.6;margin-bottom:12px"></div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6">
         Dispara el workflow <strong style="color:var(--text)">Build APK</strong> de GitHub Actions en este repositorio. Asegúrate de tener el archivo <code style="color:var(--accent)">.github/workflows/build.yml</code> configurado.
       </div>
@@ -1157,6 +1159,11 @@
         document.querySelectorAll('.saved-token-item').forEach(el => el.classList.remove('active-token'));
         div.classList.add('active-token');
         showAlert('loginAlert', 'success', `✓ Token "${t.name}" seleccionado.`);
+        // Scroll login button into view so user doesn't have to hunt for it
+        setTimeout(() => {
+          const btn = document.getElementById('loginBtn');
+          if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 150);
       };
       list.appendChild(div);
     });
@@ -1553,20 +1560,69 @@
     // Show repo name in banner (solo nombre, sin usuario)
     const bannerName = document.getElementById('repoBannerName');
     if (bannerName) bannerName.textContent = selectedRepo.name || selectedRepo.full_name.split('/')[1];
-    // Verificar si build.yml ya existe en el repo
+    // Reset APK card highlight and auto-detect banner before detection
+    const apkCard = document.getElementById('apkCard');
+    if (apkCard) { apkCard.style.borderColor = ''; apkCard.style.boxShadow = ''; }
+    const apkAutoAlert = document.getElementById('apkAutoDetectAlert');
+    if (apkAutoAlert) { apkAutoAlert.style.display = 'none'; apkAutoAlert.innerHTML = ''; }
+    // Verificar si build.yml o ZIP existen en el repo
     autoDetectRepoZip();
   }
 
   async function autoDetectRepoZip() {
     if (!selectedRepo) return;
+    const branch = selectedRepo.default_branch || 'main';
+    let hasBuildYml = false;
+    let hasZip = false;
+    let zipName = '';
+
+    // 1. Detect build.yml
     try {
-      const branch = selectedRepo.default_branch || 'main';
       await ghGet('/repos/' + selectedRepo.full_name + '/contents/' + encodeURIComponent('.github/workflows/build.yml') + '?ref=' + branch);
+      hasBuildYml = true;
       document.getElementById('buildYmlAlert').className = 'alert success visible';
       document.getElementById('buildYmlAlert').textContent = 'build.yml ya existe en este repositorio';
       document.getElementById('buildYmlBtnText').textContent = 'Actualizar build.yml';
     } catch(e) {
       // no existe aun, boton queda como "Crear"
+    }
+
+    // 2. Detect .zip files in repo root
+    try {
+      const contents = await ghGet('/repos/' + selectedRepo.full_name + '/contents/?ref=' + branch);
+      if (Array.isArray(contents)) {
+        const zipFile = contents.find(f => f.type === 'file' && f.name.toLowerCase().endsWith('.zip'));
+        if (zipFile) {
+          hasZip = true;
+          zipName = zipFile.name;
+        }
+      }
+    } catch(e) {}
+
+    // 3. If ZIP or build.yml found, auto-scroll to APK section and highlight it
+    if (hasBuildYml || hasZip) {
+      const apkCard = document.getElementById('apkCard');
+      const apkAutoAlert = document.getElementById('apkAutoDetectAlert');
+      if (apkCard) {
+        // Show detection banner
+        if (apkAutoAlert) {
+          apkAutoAlert.style.display = 'block';
+          if (hasBuildYml && hasZip) {
+            apkAutoAlert.innerHTML = `🤖 <strong>Auto-detectado:</strong> Se encontró <code style="color:var(--accent)">${zipName}</code> y <code style="color:var(--accent)">build.yml</code> en este repositorio. ¡Listo para compilar!`;
+          } else if (hasBuildYml) {
+            apkAutoAlert.innerHTML = `🤖 <strong>Auto-detectado:</strong> Este repositorio ya tiene <code style="color:var(--accent)">build.yml</code> configurado. ¡Listo para compilar el APK!`;
+          } else {
+            apkAutoAlert.innerHTML = `🤖 <strong>Auto-detectado:</strong> Se encontró <code style="color:var(--accent)">${zipName}</code> en este repositorio. Configura el workflow para compilar el APK.`;
+          }
+        }
+        // Highlight card border
+        apkCard.style.borderColor = 'var(--accent2)';
+        apkCard.style.boxShadow = '0 0 0 2px rgba(124,58,237,0.25)';
+        // Scroll to APK section smoothly after a brief delay
+        setTimeout(() => {
+          apkCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 400);
+      }
     }
   }
 
